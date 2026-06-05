@@ -2,6 +2,7 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
 const OWNER = process.env.GITHUB_OWNER || "all-canbe";
 const REPO = process.env.GITHUB_REPO || "mykb";
 const BRANCH = process.env.GITHUB_BRANCH || "main";
+const VERCEL_DEPLOY_HOOK = process.env.VERCEL_DEPLOY_HOOK || "";
 
 const API = "https://api.github.com";
 
@@ -67,6 +68,16 @@ export async function deleteFile(
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+// 触发 Vercel 重新部署，让新提交的内容生效
+export async function triggerRedeploy(): Promise<void> {
+  if (!VERCEL_DEPLOY_HOOK) return;
+  try {
+    await fetch(VERCEL_DEPLOY_HOOK, { method: "POST" });
+  } catch {
+    // 忽略错误，GitHub 提交后 Vercel 也会自动 webhook 重建
   }
 }
 
