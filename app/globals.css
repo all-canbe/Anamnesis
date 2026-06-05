@@ -545,6 +545,56 @@ img { max-width: 100%; display: block; }
 .tags-header h2 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
 .tags-header p { font-size: 14px; color: var(--color-text-secondary); margin-bottom: 16px; }
 
+/* 标签输入模式切换 */
+.tag-input-mode {
+  display: flex; gap: 4px; padding: 4px;
+  background: var(--color-toolbar); border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+}
+.mode-btn {
+  flex: 1; padding: 8px 12px; border: none; background: transparent;
+  border-radius: var(--radius-sm); cursor: pointer; font-size: 13px;
+  color: var(--color-text-secondary); transition: all 0.2s;
+}
+.mode-btn:hover { color: var(--color-text); }
+.mode-btn.active {
+  background: var(--color-bg); color: var(--color-text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  font-weight: 600;
+}
+
+/* 预设标签网格 */
+.preset-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px; padding: 4px 0;
+}
+.preset-empty {
+  grid-column: 1 / -1; padding: 24px 16px; text-align: center;
+  color: var(--color-text-muted); font-size: 13px;
+}
+.preset-chip {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 10px 12px; border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm); background: var(--color-bg);
+  cursor: pointer; transition: all 0.15s; text-align: left;
+}
+.preset-chip:hover {
+  border-color: var(--color-accent); background: var(--color-hover);
+}
+.preset-chip.selected {
+  border-color: var(--color-accent); background: var(--color-toolbar);
+  box-shadow: 0 0 0 2px rgba(26, 26, 26, 0.1);
+}
+.preset-emoji { font-size: 18px; }
+.preset-label { font-size: 13px; font-weight: 600; color: var(--color-text); }
+.preset-key { font-size: 11px; color: var(--color-text-muted); font-family: var(--font-mono); }
+
+/* 标签预览 */
+.tag-preview-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 0; font-size: 13px; color: var(--color-text-secondary);
+}
+
 .tag-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
