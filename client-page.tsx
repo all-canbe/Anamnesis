@@ -179,15 +179,17 @@ function EditorPage({ editId, onDone }: { editId: string | null; onDone: () => v
 
   useEffect(() => {
     if (isEdit && editId) {
-      const r = getRecord(editId);
-      if (r) {
-        setTitle(r.meta.title);
-        setCategory(r.meta.category);
-        setDate(r.meta.date);
-        setSummary(r.meta.summary);
-        setContent(r.content);
-        setFormat(r.meta.format);
-      }
+      (async () => {
+        const r = await getRecord(editId);
+        if (r) {
+          setTitle(r.meta.title);
+          setCategory(r.meta.category);
+          setDate(r.meta.date);
+          setSummary(r.meta.summary);
+          setContent(r.content);
+          setFormat(r.meta.format);
+        }
+      })();
     } else {
       const d = new Date();
       setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);

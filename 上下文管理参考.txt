@@ -1,0 +1,143 @@
+以下是该上下文压缩系统的核心逻辑说明，可直接作为移植文档：
+
+---
+
+## 上下文压缩系统核心逻辑
+
+### 一、架构总览
+
+```
+CompactionConfig          → 配置参数上下文窗口/阈值/行为
+CompressionContext        → 运行时状态（消息列表、工具结果、摘要链、缓存）
+CompactionPipeline        → 决策 + 执行四级压缩
+ContextManager            → 统一入口（add_message → should_compact → run_compact）
+```
+
+### 二、数据模型
+
+**`CompactionConfig`** — 所有可调参数：
+- `context_window` (默认 100K)：LLM 上下文窗口大小
+- `compaction_threshold_ratio` (默认 0.8)：触发压缩的窗口比例（80% → 80K）
+- `output_headroom` / `compaction_headroom`：为模型输出和压缩操作预留的 token 空间
+- `micro_compact_tool_count` (20)：工具调用数触发微压缩
+- `micro_compact_min_tokens` (20K)：微压缩最低 token 数
+- `collapse_min_tokens` (30K)：折叠触发下限
+- `hot_tail_size` (3) / `hot_tail_tokens` (40K)：保留最近 N 条工具结果不压缩
+- `prefer_cache_stability`：是否优先保持 prefix cache 稳定
+
+**`CompressionMessage`** — 统一消息结构：
+```
+{role, content, tool_use_id, tool_name, tool_arguments, timestamp, cached}
+token_estimate() = len(content) // 4
+```
+
+**`TokenEstimate`** — 按角色统计 token：
+```
+{system, user_messages, assistant_messages, tool_calls, tool_results, total}
+```
+
+**`CompressionToolResult`** — 工具执行结果包装：
+```
+{id, name, arguments, result, timestamp, cached}
+to_reference() → "[Tool result saved to: /tmp/tool_result_{id}]"
+```
+
+**`SummaryChain`** — 累积摘要链：
+- 维护 `list[str]`，每次压缩追加一条
+- `merge()` 以 `\n\n` 拼接
+- `token_count()` = `len(merge()) // 4`
+- `exceeded()` 检查是否超过 `_max_tokens` (8K)
+
+**`PrefixCacheManager`** — 前缀缓存管理：
+- `{key: (value, timestamp)}` 字典
+- TTL 过期清除，LRU 策略
+- SHA-256 哈希作为 key，保持系统提示稳定以命中 provider 缓存
+
+### 三、核心决策流程（`CompactionPipeline.should_compact`）
+
+```
+输入: CompressionContext（含 messages + summary_chain）
+输出: (是否压缩, 触发原因, 压缩级别)
+
+优先级:
+1. if tool_calls >= micro_compact_tool_count AND total >= micro_compact_min_tokens
+   → MICRO 压缩（工具调用过多时预防性清理）
+
+2. if total >= effective_threshold (= context_window * threshold_ratio)
+   → 二级判断:
+     if total >= collapse_min_tokens → CONTEXT_COLLAPSE
+     else → MICRO
+
+3. if summary_chain.token_count() >= session_memory_min_tokens
+   → SESSION_MEMORY 压缩（摘要链过长）
+```
+
+### 四、四级压缩实现
+
+**1. MICRO（微压缩）**
+```
+保留最近 keep_recent（10）条消息
+将前面的 N 条折叠为一条占位消息："[系统已压缩 N 条历史消息]"
+```
+
+**2. CONTEXT_COLLAPSE（上下文折叠）**
+```
+折叠前一半 → "[系统已压缩 N 条上下文消息]"
+保留后一半
+```
+
+**3. SESSION_MEMORY（会话记忆压缩）**
+```
+当前实现与 CONTEXT_COLLAPSE 相同
+（增强版可调用 LLM 生成结构化摘要：goal, constraints, accomplished, files...）
+```
+
+**4. FULL（全量压缩）**
+```
+全部折叠 → "[系统已压缩全部 N 条消息]"
++ 保留最后一条消息
+```
+
+### 五、完整调用流程
+
+```python
+# 1. 创建 ContextManager，注入配置
+manager = ContextManager(CompactionContext(...))
+
+# 2. 每次添加消息后检查并执行压缩
+async def compress_context(messages):
+    # 将原始消息转换为 CompressionMessage
+    for msg in messages:
+        manager.add_message(CompressionMessage.from_langchain(msg))
+
+    # 判断是否需要压缩
+    should, trigger, phase = await manager.pipeline.should_compact(manager.context)
+
+    # 执行压缩（仅 when needed）
+    if should:
+        compacted = await manager.pipeline.compact(manager.context.messages, phase)
+        manager.context.messages = compacted
+
+    # 返回压缩后的消息列表
+    return manager.get_messages()
+```
+
+### 六、关键设计原则
+
+1. **渐进式**：从 MICRO → COLLAPSE → MEMORY → FULL，逐级升级，避免过度压缩
+2. **热尾保护**：最近 3 条 tool 结果（或 40K tokens）始终保留完整，不参与压缩
+3. **缓存稳定**：`prefer_cache_stability=True` 时，压缩尽量不破坏 system prompt 前缀，保持 provider 侧 prefix cache 命中率
+4. **Token 估算**：统一用 `len(text)//4`，不依赖外部 tokenizer（快速但近似）
+5. **摘要链**：每次压缩的结果追加到 `SummaryChain`，累积的摘要文本自身也受 `session_memory_min_tokens` 限制，避免无限膨胀
+
+### 七、移植要点
+
+| 功能 | 最小依赖 |
+|---|---|
+| 核心压缩逻辑 | 纯 Python + dataclasses + asyncio |
+| Token 估算 | 无需外部库 |
+| 消息模型 | 需适配你的消息格式（LangChain / 自定义） |
+| 存储集成 | 压缩后的消息列表直接替换原始消息列表即可 |
+| LLM 摘要（增强版） | 需调用 LLM 生成结构化 CompactionSummary |
+
+移植时最核心的部分是 `CompactionConfig` + `CompactionPipeline.should_compact()` + `CompactionPipeline.compact()` 约 100 行逻辑，其它如 `PrefixCacheManager`、`SummaryChain`、`CompressionContext` 可根据需要裁剪。

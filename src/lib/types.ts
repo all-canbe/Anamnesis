@@ -16,13 +16,13 @@ export interface ContentRecord {
   content: string;
 }
 
-export const CATEGORIES: Record<Category, { label: string; emoji: string }> = {
-  frontend: { label: "Frontend", emoji: "🎨" },
-  backend: { label: "Backend", emoji: "⚙️" },
-  ai: { label: "AI/ML", emoji: "🤖" },
-  reading: { label: "Reading", emoji: "📚" },
-  devops: { label: "DevOps", emoji: "🚀" },
-  design: { label: "Design", emoji: "🎯" }
+export const CATEGORIES: Record<Category, { label: string; icon: string }> = {
+  frontend: { label: "Frontend", icon: "frontend" },
+  backend: { label: "Backend", icon: "backend" },
+  ai: { label: "AI/ML", icon: "ai" },
+  reading: { label: "Reading", icon: "reading" },
+  devops: { label: "DevOps", icon: "devops" },
+  design: { label: "Design", icon: "design" }
 };
 
 export const THUMB_COLORS = [

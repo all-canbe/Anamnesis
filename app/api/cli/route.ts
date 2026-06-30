@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
       if (isGithubMode()) {
         await writeRecordGitHub(id, slug, title, date, category, summary, format, content);
       } else {
-        writeRecord(
+        await writeRecord(
           { id, slug, title, date, category: category as Category, summary, format: format as ContentFormat },
           content
         );
@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
         category?: string;
         limit?: number;
       };
-      let records = getRecords();
+      let records = await getRecords();
       if (category && category !== "all") {
         records = records.filter((r: any) => r.category === category);
       }
@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
       if (!id) {
         return NextResponse.json({ ok: false, error: "id is required" });
       }
-      const record = getRecord(id);
+      const record = await getRecord(id);
       if (!record) {
         return NextResponse.json({ ok: false, error: `Record '${id}' not found` });
       }
@@ -238,7 +238,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: false, error: "id is required" });
       }
 
-      const existing = getRecord(id);
+      const existing = await getRecord(id);
       if (!existing) {
         return NextResponse.json({ ok: false, error: `Record '${id}' not found` });
       }
@@ -276,7 +276,7 @@ export async function POST(request: NextRequest) {
         const contentDir = getContentDir();
         const oldFullPath = path.join(contentDir, oldPath);
         if (fs.existsSync(oldFullPath)) fs.unlinkSync(oldFullPath);
-        writeRecord(newMeta, newContent);
+        await writeRecord(newMeta, newContent);
       }
 
       return NextResponse.json({ ok: true, id, slug: newSlug });
@@ -298,7 +298,7 @@ export async function POST(request: NextRequest) {
 
     // ── status ──
     if (command === "status") {
-      const records = getRecords() as any[];
+      const records = await getRecords();
       const total = records.length;
       const categories: Record<string, number> = {};
       const formats: Record<string, number> = {};
@@ -321,12 +321,12 @@ export async function POST(request: NextRequest) {
 
     // ── add-tag ──
     if (command === "add-tag") {
-      const { key, label, emoji = "📌" } = args as Record<string, string>;
+      const { key, label, icon = "ai" } = args as Record<string, string>;
       if (!key || !label) {
         return NextResponse.json({ ok: false, error: "key and label are required" });
       }
-      await addTag(key, label, emoji);
-      return NextResponse.json({ ok: true, key, label, emoji });
+      await addTag(key, label, icon);
+      return NextResponse.json({ ok: true, key, label, icon });
     }
 
     // ── delete-tag ──
@@ -341,7 +341,7 @@ export async function POST(request: NextRequest) {
 
     // ── tags ──
     if (command === "tags") {
-      const tags = getTags();
+      const tags = await getTags();
       return NextResponse.json({ ok: true, tags });
     }
 

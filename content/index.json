@@ -1,5 +1,14 @@
 [
   {
+    "id": "k15",
+    "slug": "humanizer-zh-editing-skill",
+    "title": "Humanizer-zh: 去除中文AI写作痕迹的编辑技能",
+    "date": "2026-06-05",
+    "category": "ai",
+    "summary": "基于维基百科AI写作特征整理的24种AI文本模式识别与改写指南，帮助去除中文文本的AI味，让文字更自然有人味。",
+    "format": "md"
+  },
+  {
     "id": "k14",
     "slug": "黄峥公众号文章总括",
     "title": "黄峥公众号文章总括",

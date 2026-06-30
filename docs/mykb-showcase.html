@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>知忆 - 个人知识记录系统 | MD + Zvec 双驱动</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0a0a0b;
+    --surface: #141416;
+    --surface2: #1c1c1f;
+    --border: #2a2a2e;
+    --text: #f0f0f0;
+    --text2: #a0a0a8;
+    --text3: #6b6b73;
+    --accent: #6c5ce7;
+    --accent2: #a29bfe;
+    --green: #00cec9;
+    --orange: #fdcb6e;
+    --pink: #fd79a8;
+    --radius: 12px;
+    --max-w: 960px;
+    --mock-bg: #ffffff;
+    --mock-border: #e8e8e8;
+    --mock-text: #1a1a1a;
+    --mock-text2: #666;
+    --mock-hover: #f5f5f5;
+    --mock-accent: #1a1a1a;
+    --mock-badge: #f0f0f0;
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', 'Noto Sans SC', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    overflow-x: hidden;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(ellipse at 30% 50%, rgba(108,92,231,0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 50%, rgba(0,206,201,0.06) 0%, transparent 50%);
+    animation: heroGlow 8s ease-in-out infinite alternate;
+  }
+  @keyframes heroGlow {
+    0% { transform: translate(0, 0); }
+    100% { transform: translate(-20px, 20px); }
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    background: rgba(108,92,231,0.15);
+    border: 1px solid rgba(108,92,231,0.3);
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent2);
+    letter-spacing: 1px;
+    margin-bottom: 32px;
+    position: relative;
+    z-index: 1;
+  }
+  .hero-badge .dot {
+    width: 6px; height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse-dot 2s infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  .hero h1 {
+    font-size: clamp(40px, 8vw, 72px);
+    font-weight: 800;
+    letter-spacing: -2px;
+    line-height: 1.1;
+    margin-bottom: 16px;
+    position: relative;
+    z-index: 1;
+  }
+  .hero h1 .hl1 { background: linear-gradient(135deg, var(--accent2), var(--green)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .hero h1 .hl2 { background: linear-gradient(135deg, var(--orange), var(--pink)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .hero p {
+    font-size: clamp(16px, 2.5vw, 20px);
+    color: var(--text2);
+    max-width: 640px;
+    margin-bottom: 40px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .hero-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    position: relative;
+    z-index: 1;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 28px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    cursor: pointer;
+    border: none;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(108,92,231,0.35); }
+  .btn-secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { background: var(--border); transform: translateY(-2px); }
+
+  .hero-scroll {
+    position: absolute;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: var(--text3);
+    font-size: 11px;
+    letter-spacing: 2px;
+    animation: bounce 2s infinite;
+    z-index: 1;
+  }
+  @keyframes bounce {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(8px); }
+  }
+
+  /* ── Section ── */
+  section { padding: 80px 24px; }
+  .section-inner {
+    max-width: var(--max-w);
+    margin: 0 auto;
+  }
+  .section-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent2);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .section-title {
+    font-size: clamp(28px, 4vw, 36px);
+    font-weight: 700;
+    letter-spacing: -1px;
+    margin-bottom: 16px;
+  }
+  .section-desc {
+    color: var(--text2);
+    font-size: 16px;
+    max-width: 600px;
+    margin-bottom: 48px;
+  }
+
+  /* ── Features Grid ── */
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .feature-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .feature-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(108,92,231,0.1);
+  }
+  .feature-icon {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    margin-bottom: 16px;
+  }
+  .feature-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+  .feature-card p { font-size: 13px; color: var(--text2); line-height: 1.6; }
+
+  /* ── UI Mockup ── */
+  .mockup-section { background: var(--surface); }
+  .mockup-container {
+    position: relative;
+    background: var(--mock-bg);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    margin-bottom: 24px;
+  }
+  .mockup-header {
+    height: 48px;
+    background: var(--mock-bg);
+    border-bottom: 1px solid var(--mock-border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 8px;
+  }
+  .mockup-logo {
+    font-size: 14px; font-weight: 700; color: var(--mock-text);
+    letter-spacing: 0.5px;
+  }
+  .mockup-hamburger {
+    font-size: 16px; color: var(--mock-text2);
+    cursor: pointer; padding: 4px 6px;
+    border: none; background: none;
+    border-radius: 4px;
+    transition: background 0.2s;
+  }
+  .mockup-hamburger:hover { background: var(--mock-hover); }
+  .mockup-hamburger.active { background: var(--mock-hover); color: var(--mock-accent); }
+  .mockup-nav {
+    display: flex; gap: 20px; margin-left: auto;
+    align-items: center;
+  }
+  .mockup-nav a {
+    font-size: 11px; font-weight: 600;
+    color: var(--mock-text2);
+    text-decoration: none;
+    padding: 2px 0;
+    border-bottom: 2px solid transparent;
+  }
+  .mockup-nav a.active { color: var(--mock-text); border-bottom-color: var(--mock-accent); }
+  .mockup-nav .settings-icon {
+    font-size: 14px; color: var(--mock-text2);
+    border-bottom: none !important;
+    padding: 0 4px;
+  }
+
+  .mockup-body {
+    display: flex;
+    min-height: 420px;
+    position: relative;
+  }
+
+  /* -- Left Panel (hidden by default) -- */
+  .mockup-left-panel {
+    width: 0;
+    overflow: hidden;
+    background: #f8f8f8;
+    border-right: 1px solid var(--mock-border);
+    transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .mockup-left-panel.open {
+    width: 220px;
+  }
+  .mockup-left-panel-header {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--mock-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .mockup-left-panel-header h4 {
+    font-size: 11px; font-weight: 700; color: var(--mock-text2);
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+  .mockup-left-panel-header .upload-btn {
+    font-size: 10px; padding: 3px 8px;
+    background: var(--mock-accent); color: #fff;
+    border: none; border-radius: 4px;
+    cursor: pointer; font-weight: 600;
+  }
+  .mockup-file-tree {
+    padding: 8px 0;
+    flex: 1;
+    overflow-y: auto;
+  }
+  .mockup-tree-item {
+    padding: 6px 14px;
+    font-size: 12px;
+    color: var(--mock-text2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .mockup-tree-item:hover { background: var(--mock-hover); color: var(--mock-text); }
+  .mockup-tree-item.active { background: var(--mock-hover); color: var(--mock-accent); font-weight: 600; }
+  .mockup-tree-item .tree-icon { font-size: 14px; width: 18px; text-align: center; }
+  .mockup-tree-item .tree-count {
+    margin-left: auto; font-size: 10px;
+    color: var(--mock-text2); opacity: 0.6;
+  }
+  .mockup-tree-item.indent { padding-left: 32px; }
+
+  .mockup-content {
+    flex: 1;
+    padding: 20px;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  /* -- Records list mockup -- */
+  .mockup-tabs {
+    display: flex; gap: 6px; margin-bottom: 20px;
+    padding-bottom: 12px; border-bottom: 1px solid var(--mock-border);
+  }
+  .mockup-tab {
+    padding: 4px 12px;
+    font-size: 11px; font-weight: 600;
+    color: var(--mock-text2);
+    background: var(--mock-badge);
+    border-radius: 12px;
+  }
+  .mockup-tab.active { background: var(--mock-accent); color: #fff; }
+
+  .mockup-card {
+    display: flex; gap: 14px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--mock-border);
+    cursor: pointer;
+  }
+  .mockup-card:first-child { padding-top: 0; }
+  .mockup-thumb {
+    width: 100px; height: 68px; flex-shrink: 0;
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+  .mockup-body-text { flex: 1; min-width: 0; }
+  .mockup-meta { display: flex; gap: 8px; font-size: 10px; color: var(--mock-text2); margin-bottom: 4px; }
+  .mockup-badge {
+    padding: 1px 6px; font-size: 10px; font-weight: 600;
+    background: var(--mock-badge); border-radius: 2px;
+  }
+  .mockup-title {
+    font-size: 13px; font-weight: 600; color: var(--mock-text);
+    margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .mockup-summary {
+    font-size: 11px; color: var(--mock-text2);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* -- Agent Sidebar mockup -- */
+  .mockup-agent {
+    width: 280px;
+    border-left: 1px solid var(--mock-border);
+    background: #fafafa;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .mockup-agent-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--mock-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .mockup-agent-header h4 {
+    font-size: 12px; font-weight: 700; color: var(--mock-text);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .mockup-agent-header .status-dot {
+    width: 6px; height: 6px; background: #38a169; border-radius: 50%;
+    display: inline-block;
+  }
+  .mockup-agent-close {
+    width: 20px; height: 20px;
+    border: 1px solid var(--mock-border);
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+    font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--mock-text2);
+  }
+
+  .mockup-agent-messages {
+    flex: 1;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: hidden;
+  }
+  .mockup-msg {
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 11px;
+    line-height: 1.5;
+    max-width: 85%;
+  }
+  .mockup-msg.user {
+    background: var(--mock-accent);
+    color: #fff;
+    align-self: flex-end;
+    border-bottom-right-radius: 2px;
+  }
+  .mockup-msg.agent {
+    background: #fff;
+    color: var(--mock-text);
+    border: 1px solid var(--mock-border);
+    align-self: flex-start;
+    border-bottom-left-radius: 2px;
+  }
+  .mockup-msg.agent .typing {
+    display: flex; gap: 3px; align-items: center;
+  }
+  .mockup-msg.agent .typing span {
+    width: 5px; height: 5px;
+    background: var(--mock-text2);
+    border-radius: 50%;
+    animation: typingDot 1.4s infinite;
+  }
+  .mockup-msg.agent .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .mockup-msg.agent .typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typingDot {
+    0%, 60%, 100% { opacity: 0.3; }
+    30% { opacity: 1; }
+  }
+
+  .mockup-agent-input {
+    padding: 10px 16px;
+    border-top: 1px solid var(--mock-border);
+    display: flex;
+    gap: 8px;
+  }
+  .mockup-agent-input input {
+    flex: 1;
+    padding: 7px 10px;
+    border: 1px solid var(--mock-border);
+    border-radius: 6px;
+    font-size: 11px;
+    outline: none;
+  }
+  .mockup-agent-input button {
+    padding: 7px 14px;
+    background: var(--mock-accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .mockup-label {
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text3);
+    letter-spacing: 1px;
+    margin-top: 8px;
+    text-transform: uppercase;
+  }
+
+  /* ── Settings mockup card ── */
+  .mockup-settings-row {
+    display: flex;
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .mockup-settings-card {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    text-align: center;
+  }
+  .mockup-settings-card .icon { font-size: 24px; margin-bottom: 8px; }
+  .mockup-settings-card h4 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .mockup-settings-card p { font-size: 11px; color: var(--text3); }
+
+  /* ── Dual-drive diagram ── */
+  .dual-drive {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+  .drive-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    text-align: center;
+    transition: all 0.3s;
+  }
+  .drive-card:hover { transform: translateY(-4px); }
+  .drive-card.md { border-color: rgba(0,206,201,0.3); }
+  .drive-card.md:hover { box-shadow: 0 8px 24px rgba(0,206,201,0.1); }
+  .drive-card.zvec { border-color: rgba(108,92,231,0.3); }
+  .drive-card.zvec:hover { box-shadow: 0 8px 24px rgba(108,92,231,0.1); }
+  .drive-icon {
+    width: 56px; height: 56px;
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px;
+    margin: 0 auto 16px;
+  }
+  .drive-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+  .drive-card .sub { font-size: 12px; color: var(--accent2); font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+  .drive-card p { font-size: 13px; color: var(--text2); line-height: 1.6; }
+  .drive-features {
+    list-style: none;
+    text-align: left;
+    margin-top: 16px;
+  }
+  .drive-features li {
+    font-size: 12px;
+    color: var(--text2);
+    padding: 4px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .drive-features li::before {
+    content: '▸';
+    color: var(--accent2);
+    font-weight: 700;
+  }
+
+  /* ── Architecture ── */
+  .arch-diagram {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 40px;
+    overflow-x: auto;
+  }
+  .arch-diagram pre {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 1.8;
+    color: var(--text2);
+  }
+
+  /* ── Timeline ── */
+  .timeline {
+    position: relative;
+    padding-left: 32px;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 11px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--border);
+  }
+  .timeline-item {
+    position: relative;
+    margin-bottom: 32px;
+    padding-left: 24px;
+  }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -27px;
+    top: 6px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 3px solid var(--bg);
+  }
+  .timeline-item.done::before { background: var(--green); }
+  .timeline-item.now::before { background: var(--orange); animation: pulse-dot 2s infinite; }
+  .timeline-item.future::before { background: var(--text3); }
+  .timeline-item .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .tag-done { background: rgba(0,206,201,0.15); color: var(--green); }
+  .tag-now { background: rgba(253,203,110,0.15); color: var(--orange); }
+  .tag-future { background: rgba(107,107,115,0.2); color: var(--text3); }
+  .timeline-item h4 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .timeline-item p { font-size: 13px; color: var(--text2); }
+
+  /* ── Stats ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 16px;
+    margin-bottom: 48px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    text-align: center;
+  }
+  .stat-number {
+    font-size: 36px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    background: linear-gradient(135deg, var(--accent2), var(--green));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .stat-label { font-size: 12px; color: var(--text3); margin-top: 4px; font-weight: 500; }
+
+  /* ── Tech Stack ── */
+  .tech-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .tech-item {
+    padding: 8px 16px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text2);
+    transition: all 0.2s;
+  }
+  .tech-item:hover { border-color: var(--accent); color: var(--text); }
+  .tech-item.zvec { border-color: rgba(108,92,231,0.4); color: var(--accent2); }
+  .tech-item.turso { border-color: rgba(0,206,201,0.4); color: var(--green); }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    padding: 48px 24px;
+    border-top: 1px solid var(--border);
+    color: var(--text3);
+    font-size: 13px;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .dual-drive { grid-template-columns: 1fr; }
+    .mockup-agent { width: 200px; }
+    .mockup-agent-messages .mockup-msg { font-size: 10px; }
+    .mockup-settings-row { flex-direction: column; }
+    .mockup-left-panel.open { width: 160px; }
+    .mockup-tree-item { font-size: 11px; padding: 5px 10px; }
+  }
+  @media (max-width: 640px) {
+    section { padding: 48px 16px; }
+    .arch-diagram { padding: 20px; }
+    .arch-diagram pre { font-size: 11px; }
+    .mockup-body { flex-direction: column; }
+    .mockup-agent { width: 100%; border-left: none; border-top: 1px solid var(--mock-border); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════ HERO ══════ -->
+<section class="hero">
+  <div class="hero-badge">
+    <span class="dot"></span>
+    知忆 v0.1 · Apache 2.0 · MD + Zvec 双驱动
+  </div>
+  <h1><span class="hl1">知忆</span> — <span class="hl2">知识即文件，检索即语义</span></h1>
+  <p>一个极简、可扩展的个人知识记录系统。<br>CLI + Web 双通道，Turso 主存储，Zvec 语义检索，AI Agent 就绪。</p>
+  <div class="hero-actions">
+    <a href="#mockup" class="btn btn-primary">查看效果图 →</a>
+    <a href="#features" class="btn btn-secondary">探索功能</a>
+    <a href="#arch" class="btn btn-secondary">三层架构</a>
+  </div>
+  <div class="hero-scroll">SCROLL</div>
+</section>
+
+<!-- ══════ STATS ══════ -->
+<section>
+  <div class="section-inner">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number">2</div>
+        <div class="stat-label">使用通道</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">3</div>
+        <div class="stat-label">存储层 (Turso + GitHub + Zvec)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">2</div>
+        <div class="stat-label">驱动引擎</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">1</div>
+        <div class="stat-label">AI Agent</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════ UI MOCKUP ══════ -->
+<section id="mockup" class="mockup-section">
+  <div class="section-inner">
+    <div class="section-label">效果预览</div>
+    <h2 class="section-title">三栏布局：左侧面板 + 知识库 + AI Agent</h2>
+    <p class="section-desc">左侧隐藏面板（文件树/视图切换/上传文件夹），中间知识库主内容，右侧固定 AI Agent 对话面板。</p>
+
+    <div class="mockup-container">
+      <!-- Mockup Header -->
+      <div class="mockup-header">
+        <span class="mockup-logo">知忆</span>
+        <button class="mockup-hamburger active">☰</button>
+        <div class="mockup-nav">
+          <a href="#" class="active">Records</a>
+          <a href="#">Tags</a>
+          <a href="#">Orchestration</a>
+          <a href="#" class="settings-icon">⚙</a>
+        </div>
+      </div>
+
+      <!-- Mockup Body -->
+      <div class="mockup-body">
+        <!-- Left Panel (open) -->
+        <div class="mockup-left-panel open">
+          <div class="mockup-left-panel-header">
+            <h4>文件树</h4>
+            <button class="upload-btn">+ 上传文件夹</button>
+          </div>
+          <div class="mockup-file-tree">
+            <div class="mockup-tree-item active">
+              <span class="tree-icon">📁</span> All Records <span class="tree-count">14</span>
+            </div>
+            <div class="mockup-tree-item">
+              <span class="tree-icon">📁</span> Frontend <span class="tree-count">2</span>
+            </div>
+            <div class="mockup-tree-item">
+              <span class="tree-icon">📁</span> Backend <span class="tree-count">2</span>
+            </div>
+            <div class="mockup-tree-item">
+              <span class="tree-icon">📁</span> AI/ML <span class="tree-count">3</span>
+            </div>
+            <div class="mockup-tree-item">
+              <span class="tree-icon">📁</span> Reading <span class="tree-count">3</span>
+            </div>
+            <div class="mockup-tree-item">
+              <span class="tree-icon">📁</span> DevOps <span class="tree-count">2</span>
+            </div>
+            <div class="mockup-tree-item">
+              <span class="tree-icon">📁</span> Design <span class="tree-count">2</span>
+            </div>
+            <div style="border-top:1px solid var(--mock-border);margin:8px 14px;"></div>
+            <div class="mockup-tree-item indent">
+              <span class="tree-icon">📄</span> 视图: 列表
+            </div>
+            <div class="mockup-tree-item indent">
+              <span class="tree-icon">📄</span> 视图: 网格
+            </div>
+            <div class="mockup-tree-item indent">
+              <span class="tree-icon">📄</span> 视图: 紧凑
+            </div>
+          </div>
+        </div>
+
+        <!-- Main Content: Records List -->
+        <div class="mockup-content">
+          <div class="mockup-tabs">
+            <span class="mockup-tab active">ALL (14)</span>
+            <span class="mockup-tab">Frontend (2)</span>
+            <span class="mockup-tab">Backend (2)</span>
+            <span class="mockup-tab">AI/ML (3)</span>
+            <span class="mockup-tab">Reading (3)</span>
+            <span class="mockup-tab">DevOps (2)</span>
+            <span class="mockup-tab">Design (2)</span>
+          </div>
+
+          <div class="mockup-card">
+            <div class="mockup-thumb" style="background:#fef2f2;">🤖</div>
+            <div class="mockup-body-text">
+              <div class="mockup-meta">
+                <span>2026-06-05</span>
+                <span class="mockup-badge">AI/ML</span>
+                <span class="mockup-badge" style="border:1px solid #ddd;background:transparent;">MD</span>
+              </div>
+              <div class="mockup-title">Humanizer-zh: 去除中文AI写作痕迹的编辑技能</div>
+              <div class="mockup-summary">基于维基百科AI写作特征整理的24种AI文本模式识别与改写指南...</div>
+            </div>
+          </div>
+
+          <div class="mockup-card">
+            <div class="mockup-thumb" style="background:#fefce8;">📚</div>
+            <div class="mockup-body-text">
+              <div class="mockup-meta">
+                <span>2026-06-05</span>
+                <span class="mockup-badge">Reading</span>
+                <span class="mockup-badge" style="border:1px solid #ddd;background:transparent;">MD</span>
+              </div>
+              <div class="mockup-title">黄峥公众号文章总括</div>
+              <div class="mockup-summary">基于黄峥 2016-2017 年在个人公众号发表的 10 篇文章的整体性总结...</div>
+            </div>
+          </div>
+
+          <div class="mockup-card">
+            <div class="mockup-thumb" style="background:#f0fdf4;">🎨</div>
+            <div class="mockup-body-text">
+              <div class="mockup-meta">
+                <span>2026-05-22</span>
+                <span class="mockup-badge">Frontend</span>
+                <span class="mockup-badge" style="border:1px solid #ddd;background:transparent;">HTML</span>
+              </div>
+              <div class="mockup-title">React Server Components 深入理解与实践</div>
+              <div class="mockup-summary">RSC 让组件在服务端渲染，减少客户端 JS 体积...</div>
+            </div>
+          </div>
+
+          <div class="mockup-card">
+            <div class="mockup-thumb" style="background:#eff6ff;">⚙️</div>
+            <div class="mockup-body-text">
+              <div class="mockup-meta">
+                <span>2026-05-18</span>
+                <span class="mockup-badge">Backend</span>
+                <span class="mockup-badge" style="border:1px solid #ddd;background:transparent;">HTML</span>
+              </div>
+              <div class="mockup-title">Go 语言并发模式：从 Goroutine 到 Channel 编排</div>
+              <div class="mockup-summary">Go 的并发模型是其核心竞争力...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent Sidebar -->
+        <div class="mockup-agent">
+          <div class="mockup-agent-header">
+            <h4><span class="status-dot"></span> AI 助手</h4>
+            <button class="mockup-agent-close">−</button>
+          </div>
+          <div class="mockup-agent-messages">
+            <div class="mockup-msg agent">
+              你好！我是你的知识助手。我可以帮你：
+              <br>• 总结当前文章
+              <br>• 回答知识库问题
+              <br>• 推荐相关文章
+              <br>• 生成综合报告
+            </div>
+            <div class="mockup-msg user">
+              帮我总结一下 RSC 这篇文章的核心要点
+            </div>
+            <div class="mockup-msg agent">
+              <strong>React Server Components 核心要点：</strong>
+              <br><br>
+              1. <strong>服务端渲染</strong> — 组件在服务端运行，直接访问数据库和文件系统，无需 API 层
+              <br><br>
+              2. <strong>组件分类</strong> — Server Components 处理数据和渲染，Client Components 处理交互和状态
+              <br><br>
+              3. <strong>流式传输</strong> — 支持边渲染边发送，结合 Suspense 分块加载
+              <br><br>
+              4. <strong>限制</strong> — Server Components 不能使用 useState/useEffect，不能绑定事件
+              <br><br>
+              <span style="font-size:10px;color:#999;">基于 Zvec 向量检索 · 来源: k1</span>
+            </div>
+            <div class="mockup-msg agent">
+              <div class="typing">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+          </div>
+          <div class="mockup-agent-input">
+            <input type="text" placeholder="向知识库提问..." value="帮我总结 RSC 文章">
+            <button>发送</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup-label">⬆ 三栏布局：左侧文件树 · 中间知识库 · 右侧 AI Agent · 点击 ☰ 切换左侧面板</div>
+
+    <!-- Settings mockup cards -->
+    <div class="mockup-settings-row">
+      <div class="mockup-settings-card">
+        <div class="icon">☁️</div>
+        <h4>Turso 云服务</h4>
+        <p>免费 9GB · 1B 请求/月 · HTTP 直连</p>
+      </div>
+      <div class="mockup-settings-card">
+        <div class="icon">🖥️</div>
+        <h4>自部署 sqld</h4>
+        <p>自己的服务器 · SQLite 兼容 · 不限量</p>
+      </div>
+      <div class="mockup-settings-card">
+        <div class="icon">📦</div>
+        <h4>GitHub 备份</h4>
+        <p>导出 .md 文件 · 版本历史保留</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════ FEATURES ══════ -->
+<section id="features">
+  <div class="section-inner">
+    <div class="section-label">核心功能</div>
+    <h2 class="section-title">CLI + Web 双通道知识管理</h2>
+    <p class="section-desc">终端发布、Web 管理、远程同步、AI 增强——覆盖所有使用场景。</p>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(108,92,231,0.15);">🌐</div>
+        <h3>Web 知识库</h3>
+        <p>分类浏览、分页、详情渲染（MD/HTML）、Tags 管理、中英文切换。基于 Next.js 16 App Router，Server Components 直读 Turso。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(0,206,201,0.15);">⌨️</div>
+        <h3>CLI 命令行</h3>
+        <p>全局 npm 包 <code>kb</code>，6 个命令覆盖发布/列表/编辑/删除/状态/初始化。远程模式直连 Turso，毫秒级响应。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(253,203,110,0.15);">📝</div>
+        <h3>编排编辑器</h3>
+        <p>内置 Markdown 编辑器 + 工具栏，支持 MD ↔ HTML 格式切换，实时预览，支持图片上传。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(162,155,254,0.15);">🗄️</div>
+        <h3>Turso 主存储</h3>
+        <p>SQLite 兼容，HTTP 协议直连，ACID 事务保障。Web 和 CLI 均直连，无需经过应用层中转。支持切换自部署 sqld。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(253,121,168,0.15);">🌍</div>
+        <h3>中英文双语</h3>
+        <p>React Context 运行时语言切换，覆盖导航、分类、详情、编辑器、设置页等全部 UI 文本。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(0,206,201,0.15);">⚙️</div>
+        <h3>设置页切换服务器</h3>
+        <p>Web 端设置页可配置 Turso 地址和 token，支持随时切换 Turso 云服务或自部署 sqld 服务器。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(108,92,231,0.15);">☰</div>
+        <h3>三栏布局</h3>
+        <p>左侧隐藏面板（文件树/视图切换/快速筛选），中间主内容区，右侧固定 AI Agent 面板。点击 ☰ 按钮呼出左侧面板。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(0,206,201,0.15);">📂</div>
+        <h3>上传文件夹</h3>
+        <p>支持上传整个文件夹（如个人 Skill），自动解析文件夹结构为分类和知识记录。文件夹名→分类，.md 文件→记录。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════ ARCHITECTURE ══════ -->
+<section id="arch">
+  <div class="section-inner">
+    <div class="section-label">三层架构</div>
+    <h2 class="section-title">Turso 主存储 + GitHub 备份 + Zvec 语义检索</h2>
+    <p class="section-desc">Web 和 CLI 直连 Turso，不再经过应用层中转。GitHub 退化为备份层，Zvec 提供向量检索能力。</p>
+
+    <div class="arch-diagram">
+<pre>
+┌─────────────────────────────────────────────────────────────────────┐
+│                        用户交互层                                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐  │
+│  │  Web 浏览器   │  │  终端 CLI    │  │  AI Agent 侧边栏          │  │
+│  │  (Next.js)   │  │  (kb 命令)   │  │  (聊天式交互 + RAG)       │  │
+│  │  + 设置页 ⚙  │  │  直连 Turso  │  │                          │  │
+│  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────────┘  │
+└─────────┼──────────────────┼─────────────────────┼──────────────────┘
+          │                  │                     │
+┌─────────▼──────────────────▼─────────────────────▼──────────────────┐
+│                        服务层                                        │
+│  ┌─────────────────────────────────────────────────────────────────┐ │
+│  │  Next.js App Router (Server Components + Server Actions)        │ │
+│  │  · Records 列表 (分类+分页+语义搜索)   · 详情页 (渲染+相似推荐)   │ │
+│  │  · 编排页 (CRUD+编辑器+图片上传)       · Tags 管理               │ │
+│  │  · 中英文切换                          · Agent 调度              │ │
+│  └──────────────────────┬──────────────────────────────────────────┘ │
+└─────────────────────────┼────────────────────────────────────────────┘
+                          │
+┌─────────────────────────▼────────────────────────────────────────────┐
+│                    三层存储层                                          │
+│  ┌────────────────────────────┐  ┌──────────────────────────────┐   │
+│  │  🗄️ Turso (主存储)         │  │  🧠 Zvec (语义检索)          │   │
+│  │  ────────────────────      │  │  ─────────────────────       │   │
+│  │  SQLite 兼容 · HTTP 协议   │  │  嵌入式向量数据库              │   │
+│  │  · records 表 (知识记录)    │  │  · 知识向量化索引              │   │
+│  │  · tags 表 (标签)          │  │  · 语义搜索                   │   │
+│  │  · files 表 (文件附件)      │  │  · 相似推荐                   │   │
+│  │  · ACID 事务               │  │  · RAG 问答                   │   │
+│  │  · 可切换自部署 sqld        │  │  · 阿里通义开源               │   │
+│  └────────────────────────────┘  └──────────────────────────────┘   │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │  📦 GitHub (备份/版本控制)                                     │   │
+│  │  ───────────────────────                                      │   │
+│  │  · 定时/手动同步到仓库  · 导出为 .md 文件  · Git 版本历史保留    │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────┘
+</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ══════ ROADMAP ══════ -->
+<section id="roadmap">
+  <div class="section-inner">
+    <div class="section-label">路线图</div>
+    <h2 class="section-title">从记录工具到知识助手</h2>
+    <p class="section-desc">已完成基础能力建设，下一阶段聚焦 Turso 迁移、Zvec 集成与 AI Agent。</p>
+
+    <div class="timeline">
+      <div class="timeline-item done">
+        <span class="tag tag-done">✅ 已完成</span>
+        <h4>Phase 1 — Web 基础</h4>
+        <p>Next.js App Router 架构迁移，Records 列表/详情/编排/Tags 完整实现，14 篇示例知识记录。</p>
+      </div>
+      <div class="timeline-item done">
+        <span class="tag tag-done">✅ 已完成</span>
+        <h4>Phase 2 — CLI 工具 + 设置页</h4>
+        <p>全局 npm 包 <code>kb</code>，6 个命令。Web 端设置页支持 Turso/sqld 服务器地址切换。</p>
+      </div>
+      <div class="timeline-item now">
+        <span class="tag tag-now">🔄 进行中</span>
+        <h4>Phase 3 — Turso 迁移 + Zvec 集成 + 远程采集</h4>
+        <p>存储层从 GitHub API 桥接迁移到 Turso 直连，Zvec 向量检索集成，URL 文章导入，文件上传。</p>
+      </div>
+      <div class="timeline-item future">
+        <span class="tag tag-future">📋 规划中</span>
+        <h4>Phase 4 — AI Agent 侧边栏</h4>
+        <p>右侧滑出式 Agent 面板，支持知识管理（摘要/问答/推荐）、知识产出（报告/博客）、知识探索（图谱/聚类）、知识总结（回顾/复习）。</p>
+      </div>
+      <div class="timeline-item future">
+        <span class="tag tag-future">📋 规划中</span>
+        <h4>Phase 5 — 架构升级与生态</h4>
+        <p>用户系统/浏览器扩展/VS Code 插件/PWA 移动端。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════ TECH STACK ══════ -->
+<section>
+  <div class="section-inner">
+    <div class="section-label">技术栈</div>
+    <h2 class="section-title">轻量、现代、可扩展</h2>
+    <p class="section-desc">全栈 TypeScript，最小依赖，极致简洁。</p>
+    <div class="tech-list">
+      <span class="tech-item">Next.js 16</span>
+      <span class="tech-item">React 19</span>
+      <span class="tech-item">TypeScript</span>
+      <span class="tech-item">App Router</span>
+      <span class="tech-item">Server Actions</span>
+      <span class="tech-item turso">Turso (LibSQL)</span>
+      <span class="tech-item">better-sqlite3</span>
+      <span class="tech-item">Commander.js</span>
+      <span class="tech-item">Inquirer</span>
+      <span class="tech-item">Markdown</span>
+      <span class="tech-item zvec">Zvec (阿里通义)</span>
+      <span class="tech-item">Uploadthing</span>
+      <span class="tech-item">Vercel</span>
+    </div>
+  </div>
+</section>
+
+<!-- ══════ FOOTER ══════ -->
+<footer>
+  <p>知忆 — 个人知识记录系统 · 使用 TRAE Work 构建</p>
+  <p style="margin-top: 4px; font-size: 12px;">Turso 主存储 · Zvec 语义检索 · CLI + Web 双通道 · AI Agent 就绪</p>
+</footer>
+
+</body>
+</html>

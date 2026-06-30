@@ -1,11 +1,33 @@
 import { commitFile, deleteFile as githubDeleteFile, isGithubMode, triggerRedeploy } from "./github-api";
 import { type RecordMeta, type ContentRecord, CATEGORIES } from "./types";
+import {
+  isTursoConfigured,
+  tursoGetRecords,
+  tursoGetRecord,
+  tursoWriteRecord,
+  tursoDeleteRecord,
+  tursoGetTags,
+  tursoAddTag,
+  tursoDeleteTag,
+  initTursoSchema,
+} from "./turso";
 import fs from "fs";
 import path from "path";
 
 const CONTENT_DIR = path.join(process.cwd(), "content");
 const INDEX_PATH = path.join(CONTENT_DIR, "index.json");
 const TAGS_PATH = path.join(CONTENT_DIR, "tags.json");
+
+let tursoInitialized = false;
+
+async function ensureTurso(): Promise<void> {
+  if (!tursoInitialized && isTursoConfigured()) {
+    try {
+      await initTursoSchema();
+      tursoInitialized = true;
+    } catch {}
+  }
+}
 
 function canWriteLocal(): boolean {
   if (isGithubMode()) return false;
@@ -21,13 +43,27 @@ function relPath(absPath: string): string {
   return path.relative(process.cwd(), absPath).replace(/\\/g, "/");
 }
 
-export function getRecords(): RecordMeta[] {
+export async function getRecords(): Promise<RecordMeta[]> {
+  await ensureTurso();
+  if (isTursoConfigured()) {
+    try {
+      return await tursoGetRecords();
+    } catch {}
+  }
   const raw = fs.readFileSync(INDEX_PATH, "utf-8");
   return JSON.parse(raw);
 }
 
-export function getRecord(id: string): ContentRecord | null {
-  const records = getRecords();
+export async function getRecord(id: string): Promise<ContentRecord | null> {
+  await ensureTurso();
+  if (isTursoConfigured()) {
+    try {
+      const record = await tursoGetRecord(id);
+      if (record) return record;
+    } catch {}
+  }
+
+  const records = await getRecords();
   const meta = records.find((r) => r.id === id);
   if (!meta) return null;
 
@@ -42,13 +78,13 @@ export function getRecord(id: string): ContentRecord | null {
   return { meta, content };
 }
 
-export function getCategories(): string[] {
-  const records = getRecords();
+export async function getCategories(): Promise<string[]> {
+  const records = await getRecords();
   return [...new Set(records.map((r) => r.category))];
 }
 
-export function getFilteredRecords(category?: string): RecordMeta[] {
-  const records = getRecords();
+export async function getFilteredRecords(category?: string): Promise<RecordMeta[]> {
+  const records = await getRecords();
   if (!category || category === "all") return records;
   return records.filter((r) => r.category === category);
 }
@@ -88,6 +124,17 @@ function buildIndex(): RecordMeta[] {
 }
 
 export async function writeRecord(meta: RecordMeta, content: string): Promise<void> {
+  await ensureTurso();
+
+  // Primary: Turso
+  if (isTursoConfigured()) {
+    try {
+      await tursoWriteRecord(meta, content);
+      return;
+    } catch {}
+  }
+
+  // Fallback: local fs
   const filePath = path.join(CONTENT_DIR, `${meta.id}-${meta.slug}.md`);
   const fullContent = buildFrontmatter(meta, content);
 
@@ -98,7 +145,7 @@ export async function writeRecord(meta: RecordMeta, content: string): Promise<vo
     return;
   }
 
-  // 部署环境：仅同步到 GitHub
+  // Fallback: GitHub API
   if (isGithubMode()) {
     await commitFile(relPath(filePath), fullContent, `Add record: ${meta.title}`);
     const newIndex = buildIndex();
@@ -107,12 +154,22 @@ export async function writeRecord(meta: RecordMeta, content: string): Promise<vo
     await commitFile(relPath(INDEX_PATH), JSON.stringify(newIndexWithMeta, null, 2), "Update index.json");
     await triggerRedeploy();
   } else {
-    throw new Error("Serverless environment is read-only. Set GITHUB_TOKEN to enable writes.");
+    throw new Error("No writable storage available. Configure Turso, local fs, or GITHUB_TOKEN.");
   }
 }
 
 export async function deleteRecord(id: string): Promise<void> {
-  const records = getRecords();
+  await ensureTurso();
+
+  // Primary: Turso
+  if (isTursoConfigured()) {
+    try {
+      await tursoDeleteRecord(id);
+      return;
+    } catch {}
+  }
+
+  const records = await getRecords();
   const meta = records.find((r) => r.id === id);
   if (!meta) return;
   const filePath = path.join(CONTENT_DIR, `${meta.id}-${meta.slug}.md`);
@@ -130,11 +187,18 @@ export async function deleteRecord(id: string): Promise<void> {
     await commitFile(relPath(INDEX_PATH), JSON.stringify(newIndex, null, 2), "Update index.json");
     await triggerRedeploy();
   } else {
-    throw new Error("Serverless environment is read-only. Set GITHUB_TOKEN to enable writes.");
+    throw new Error("No writable storage available.");
   }
 }
 
-export function getTags(): Record<string, { label: string; emoji: string }> {
+export async function getTags(): Promise<Record<string, { label: string; icon: string }>> {
+  await ensureTurso();
+  if (isTursoConfigured()) {
+    try {
+      return await tursoGetTags();
+    } catch {}
+  }
+
   if (!fs.existsSync(TAGS_PATH)) return { ...CATEGORIES };
   try {
     const custom = JSON.parse(fs.readFileSync(TAGS_PATH, "utf-8"));
@@ -144,33 +208,48 @@ export function getTags(): Record<string, { label: string; emoji: string }> {
   }
 }
 
-export async function addTag(key: string, label: string, emoji: string): Promise<void> {
-  const newTag = { [key]: { label, emoji } };
+export async function addTag(key: string, label: string, icon: string): Promise<void> {
+  await ensureTurso();
+
+  if (isTursoConfigured()) {
+    try {
+      await tursoAddTag(key, label, icon);
+      return;
+    } catch {}
+  }
 
   if (canWriteLocal()) {
-    let tagFile: Record<string, { label: string; emoji: string }> = {};
+    let tagFile: Record<string, { label: string; icon: string }> = {};
     if (fs.existsSync(TAGS_PATH)) {
       try { tagFile = JSON.parse(fs.readFileSync(TAGS_PATH, "utf-8")); } catch {}
     }
-    Object.assign(tagFile, newTag);
+    Object.assign(tagFile, { [key]: { label, icon } });
     fs.writeFileSync(TAGS_PATH, JSON.stringify(tagFile, null, 2));
     return;
   }
 
   if (isGithubMode()) {
-    const current = getTags();
-    const merged = { ...current, ...newTag };
+    const current = await getTags();
+    const merged = { ...current, [key]: { label, icon } };
     await commitFile(relPath(TAGS_PATH), JSON.stringify(merged, null, 2), `Add tag: ${key}`);
   } else {
-    throw new Error("Serverless environment is read-only. Set GITHUB_TOKEN to enable writes.");
+    throw new Error("No writable storage available.");
   }
 }
 
 export async function deleteTag(key: string): Promise<void> {
   if (key in CATEGORIES) return;
+  await ensureTurso();
+
+  if (isTursoConfigured()) {
+    try {
+      await tursoDeleteTag(key);
+      return;
+    } catch {}
+  }
 
   if (canWriteLocal()) {
-    let tagFile: Record<string, { label: string; emoji: string }> = {};
+    let tagFile: Record<string, { label: string; icon: string }> = {};
     if (fs.existsSync(TAGS_PATH)) {
       try { tagFile = JSON.parse(fs.readFileSync(TAGS_PATH, "utf-8")); } catch {}
     }
@@ -180,10 +259,10 @@ export async function deleteTag(key: string): Promise<void> {
   }
 
   if (isGithubMode()) {
-    const current = getTags();
+    const current = await getTags();
     delete current[key];
     await commitFile(relPath(TAGS_PATH), JSON.stringify(current, null, 2), `Delete tag: ${key}`);
   } else {
-    throw new Error("Serverless environment is read-only. Set GITHUB_TOKEN to enable writes.");
+    throw new Error("No writable storage available.");
   }
 }
