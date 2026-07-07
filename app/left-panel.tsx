@@ -1,20 +1,55 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/language-context";
 import { UploadFolderDialog } from "./upload-folder-dialog";
+import { CATEGORIES } from "@/lib/types";
 import { MenuIcon, FolderIcon, PlusIcon, ChevronLeftIcon, SearchIcon } from "@/lib/icons";
+
+interface TagInfo {
+  key: string;
+  label: string;
+  icon: string;
+  color: string;
+}
 
 interface LeftPanelProps {
   open: boolean;
+  listMode: "private" | "public";
   viewMode: "list" | "grid" | "compact";
   onViewModeChange: (mode: "list" | "grid" | "compact") => void;
   onClose: () => void;
 }
 
-export function LeftPanel({ open, viewMode, onViewModeChange, onClose }: LeftPanelProps) {
+export function LeftPanel({ open, listMode, viewMode, onViewModeChange, onClose }: LeftPanelProps) {
   const { t } = useLanguage();
+  const router = useRouter();
   const [showUpload, setShowUpload] = useState(false);
+  const [activeCategory, setActiveCategory] = useState("all");
+  const [tags, setTags] = useState<TagInfo[]>([]);
+  const [counts, setCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/tags")
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setTags(Array.isArray(data) ? data : []))
+      .catch(() => {});
+    fetch(`/api/record-counts?visibility=${listMode}`)
+      .then(res => res.ok ? res.json() : {})
+      .then(data => setCounts(data || {}))
+      .catch(() => {});
+  }, [open, listMode]);
+
+  function handleCategoryClick(key: string) {
+    setActiveCategory(key);
+    const modeParam = listMode === "public" ? "&mode=public" : "";
+    router.push(`/?category=${key}${modeParam}`);
+  }
+
+  const categoryKeys = ["all", ...Object.keys(CATEGORIES)];
+  const totalCount = Object.values(counts).reduce((a, b) => a + b, 0);
 
   return (
     <>
@@ -28,46 +63,43 @@ export function LeftPanel({ open, viewMode, onViewModeChange, onClose }: LeftPan
 
         <div className="left-panel-section">
           <div className="left-panel-section-title">
-            <FolderIcon size={12} /> {t("leftPanelFiles")}
+            <FolderIcon size={12} /> {listMode === "public" ? "Public" : t("leftPanelFiles")}
           </div>
           <div className="left-panel-tree">
-            <div className="tree-item active">
-              <FolderIcon size={14} />
-              <span>{t("all")}</span>
-              <span className="tree-count">14</span>
-            </div>
-            <div className="tree-item">
-              <FolderIcon size={14} />
-              <span>{t("category.frontend")}</span>
-              <span className="tree-count">2</span>
-            </div>
-            <div className="tree-item">
-              <FolderIcon size={14} />
-              <span>{t("category.backend")}</span>
-              <span className="tree-count">2</span>
-            </div>
-            <div className="tree-item">
-              <FolderIcon size={14} />
-              <span>{t("category.ai")}</span>
-              <span className="tree-count">3</span>
-            </div>
-            <div className="tree-item">
-              <FolderIcon size={14} />
-              <span>{t("category.reading")}</span>
-              <span className="tree-count">3</span>
-            </div>
-            <div className="tree-item">
-              <FolderIcon size={14} />
-              <span>{t("category.devops")}</span>
-              <span className="tree-count">2</span>
-            </div>
-            <div className="tree-item">
-              <FolderIcon size={14} />
-              <span>{t("category.design")}</span>
-              <span className="tree-count">2</span>
-            </div>
+            {categoryKeys.map(key => {
+              const isActive = activeCategory === key;
+              const label = key === "all" ? t("all") : t(`category.${key}`);
+              const count = key === "all" ? totalCount : (counts[key] || 0);
+              return (
+                <div
+                  key={key}
+                  className={`tree-item${isActive ? " active" : ""}`}
+                  onClick={() => handleCategoryClick(key)}
+                >
+                  <FolderIcon size={14} />
+                  <span>{label}</span>
+                  <span className="tree-count">{count}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
+
+        {tags.length > 0 && (
+          <div className="left-panel-section">
+            <div className="left-panel-section-title">
+              <SearchIcon size={12} /> {t("leftPanelFilter")}
+            </div>
+            <div className="left-panel-tree">
+              {tags.map(tag => (
+                <div key={tag.key} className="tree-item">
+                  <span>{tag.icon || "🏷"}</span>
+                  <span>{tag.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="left-panel-section">
           <div className="left-panel-section-title">
@@ -96,13 +128,6 @@ export function LeftPanel({ open, viewMode, onViewModeChange, onClose }: LeftPan
               <MenuIcon size={14} />
             </button>
           </div>
-        </div>
-
-        <div className="left-panel-section">
-          <div className="left-panel-section-title">
-            <SearchIcon size={12} /> {t("leftPanelFilter")}
-          </div>
-          <input className="left-panel-search" type="text" placeholder={t("leftPanelSearch")} />
         </div>
 
         <button className="left-panel-close" onClick={onClose}>

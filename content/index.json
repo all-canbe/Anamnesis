@@ -1,11 +1,92 @@
 [
   {
+    "id": "k13",
+    "slug": "readme",
+    "title": "README",
+    "date": "2026-07-03",
+    "category": "frontend",
+    "summary": "Test Skill  This is a README file with content.",
+    "format": "md"
+  },
+  {
+    "id": "k14",
+    "slug": "guide",
+    "title": "guide",
+    "date": "2026-07-03",
+    "category": "frontend",
+    "summary": "Guide  Step by step instructions.",
+    "format": "md"
+  },
+  {
     "id": "k15",
-    "slug": "humanizer-zh-editing-skill",
-    "title": "Humanizer-zh: 去除中文AI写作痕迹的编辑技能",
-    "date": "2026-06-05",
+    "slug": "readme",
+    "title": "README",
+    "date": "2026-07-03",
+    "category": "frontend",
+    "summary": "Test Skill  This is a README file with content.",
+    "format": "md"
+  },
+  {
+    "id": "k16",
+    "slug": "guide",
+    "title": "guide",
+    "date": "2026-07-03",
+    "category": "frontend",
+    "summary": "Guide  Step by step instructions.",
+    "format": "md"
+  },
+  {
+    "id": "k17",
+    "slug": "readme",
+    "title": "README",
+    "date": "2026-07-03",
+    "category": "frontend",
+    "summary": "Test Skill  This is a README file with content.",
+    "format": "md"
+  },
+  {
+    "id": "k18",
+    "slug": "guide",
+    "title": "guide",
+    "date": "2026-07-03",
+    "category": "frontend",
+    "summary": "Guide  Step by step instructions.",
+    "format": "md"
+  },
+  {
+    "id": "k19",
+    "slug": "readme",
+    "title": "README",
+    "date": "2026-07-03",
+    "category": "frontend",
+    "summary": "Test Skill  This is a README file with content.",
+    "format": "md"
+  },
+  {
+    "id": "k20",
+    "slug": "guide",
+    "title": "guide",
+    "date": "2026-07-03",
+    "category": "frontend",
+    "summary": "Guide  Step by step instructions.",
+    "format": "md"
+  },
+  {
+    "id": "k13",
+    "slug": "test-article",
+    "title": "Test Article",
+    "date": "2026-07-01",
+    "category": "frontend",
+    "summary": "A test summary",
+    "format": "md"
+  },
+  {
+    "id": "k14",
+    "slug": "failing-article",
+    "title": "Failing Article",
+    "date": "2026-07-01",
     "category": "ai",
-    "summary": "基于维基百科AI写作特征整理的24种AI文本模式识别与改写指南，帮助去除中文文本的AI味，让文字更自然有人味。",
+    "summary": "Failing summary",
     "format": "md"
   },
   {
@@ -15,6 +96,15 @@
     "date": "2026-06-05",
     "category": "reading",
     "summary": "基于黄峥 2016-2017 年在个人公众号发表的 10 篇文章的整体性总结。",
+    "format": "md"
+  },
+  {
+    "id": "k15",
+    "slug": "humanizer-zh-editing-skill",
+    "title": "Humanizer-zh: 去除中文AI写作痕迹的编辑技能",
+    "date": "2026-06-05",
+    "category": "ai",
+    "summary": "基于维基百科AI写作特征整理的24种AI文本模式识别与改写指南，帮助去除中文文本的AI味，让文字更自然有人味。",
     "format": "md"
   },
   {
@@ -133,5 +223,15 @@
     "category": "design",
     "summary": "从 Figma 设计稿到前端代码的高效转换流程。Design Token 自动化、组件映射和 Dev Mode 使用技巧。",
     "format": "html"
+  },
+  {
+    "id": "k100",
+    "slug": "test",
+    "title": "Test",
+    "date": "2026-01-01",
+    "category": "ai",
+    "summary": "s",
+    "format": "md",
+    "visibility": "private"
   }
 ]

@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# IDE / Tool generated
+.trae/
+.workbuddy/
+
+# Auto-generated reports
+PROJECT_BLUEPRINT.md
+QA-REPORT.md
+deliverables/

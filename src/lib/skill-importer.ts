@@ -1,3 +1,7 @@
+import { writeRecord, generateId } from "@/lib/content";
+import { slugify } from "@/lib/utils";
+import type { RecordMeta, Category, ContentFormat, Attachment } from "@/lib/types";
+
 export interface SkillPackage {
   name: string;
   description: string;
@@ -61,7 +65,7 @@ export async function fetchSkillFromGitHub(repoUrl: string): Promise<SkillPackag
     }
   }
 
-  // Fetch image files (placeholder - store URL for later R2 upload)
+  // Fetch image files (placeholder - store URL for later upload)
   const imgItems = items.filter((i) => /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(i.path));
   for (const item of imgItems) {
     skill.images.push({
@@ -93,56 +97,57 @@ async function fetchGitHubFile(owner: string, repo: string, path: string): Promi
   return null;
 }
 
-export async function importSkill(skill: SkillPackage): Promise<{
+export async function importSkill(skill: SkillPackage, userId?: string, visibility: "private" | "public" = "private"): Promise<{
   ok: boolean;
   skillId?: string;
   recordIds: string[];
+  attachmentCount: number;
   errors: string[];
 }> {
-  const recordIds: string[] = [];
-  const errors: string[] = [];
+  try {
+    const title = skill.name || "Skill";
+    const slug = slugify(title);
+    const summary = skill.description || "";
+    const id = await generateId(userId);
 
-  for (const file of skill.files) {
-    try {
-      const title = parseTitle(file.path);
-      const slug = title
-        .toLowerCase()
-        .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "-")
-        .replace(/^-|-$/g, "")
-        .slice(0, 60);
+    // 将所有 .md 文件作为附件
+    const attachments: Attachment[] = skill.files.map((f) => ({
+      path: f.path,
+      content: f.content,
+      type: "md",
+    }));
 
-      const summary = parseSummary(file.content);
+    // 正文内容 = 第一个 .md 文件的内容
+    const content = skill.files[0]?.content || "";
 
-      const res = await fetch("/api/cli", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          command: "publish",
-          title,
-          slug,
-          category: skill.category,
-          summary,
-          content: file.content,
-          format: "md",
-        }),
-      });
+    const meta: RecordMeta = {
+      id,
+      slug,
+      title,
+      date: new Date().toISOString().split("T")[0],
+      category: skill.category as Category,
+      summary,
+      format: "md" as ContentFormat,
+      visibility,
+      attachments,
+    };
 
-      const data = await res.json();
-      if (res.ok && data.id) {
-        recordIds.push(data.id);
-      } else {
-        errors.push(`${file.path}: ${data.error || "Unknown error"}`);
-      }
-    } catch (err: any) {
-      errors.push(`${file.path}: ${err.message}`);
-    }
+    await writeRecord(meta, content, userId);
+    return {
+      ok: true,
+      skillId: id,
+      recordIds: [id],
+      attachmentCount: attachments.length,
+      errors: [],
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      recordIds: [],
+      attachmentCount: 0,
+      errors: [err.message],
+    };
   }
-
-  return {
-    ok: errors.length === 0,
-    recordIds,
-    errors,
-  };
 }
 
 function parseTitle(filePath: string): string {

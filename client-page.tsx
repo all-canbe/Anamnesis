@@ -3,8 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { RecordMeta } from "@/lib/types";
 import { CATEGORIES } from "@/lib/types";
-import { getRecord } from "@/lib/content";
-import { createRecord, updateRecord, removeRecord } from "./actions";
+import { createRecord, updateRecord, removeRecord, getRecordAction } from "./actions";
 import { mdToHtml, htmlToMd } from "@/lib/md-to-html";
 
 function wrapSelection(textarea: HTMLTextAreaElement, before: string, after: string) {
@@ -180,7 +179,7 @@ function EditorPage({ editId, onDone }: { editId: string | null; onDone: () => v
   useEffect(() => {
     if (isEdit && editId) {
       (async () => {
-        const r = await getRecord(editId);
+        const r = await getRecordAction(editId);
         if (r) {
           setTitle(r.meta.title);
           setCategory(r.meta.category);

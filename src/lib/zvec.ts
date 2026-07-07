@@ -7,21 +7,24 @@ interface VectorIndex {
   text: string;
   title: string;
   category: string;
+  userId: string;
 }
 
 let index: VectorIndex[] = [];
 let initialized = false;
+let indexUserId = "";
 
-export async function initIndex(): Promise<void> {
-  if (initialized) return;
+export async function initIndex(userId?: string): Promise<void> {
+  if (initialized && (!userId || indexUserId === userId)) return;
   initialized = true;
+  indexUserId = userId || "";
 
-  const records = await getRecords();
+  const records = await getRecords(userId);
   const texts: string[] = [];
   const items: Omit<VectorIndex, "vector">[] = [];
 
   for (const meta of records) {
-    const record = await getRecord(meta.id);
+    const record = await getRecord(meta.id, userId);
     if (!record) continue;
     const text = `${meta.title}\n${meta.summary}\n${(record.content || "").slice(0, 2000)}`;
     texts.push(text);
@@ -30,6 +33,7 @@ export async function initIndex(): Promise<void> {
       text,
       title: meta.title,
       category: meta.category,
+      userId: userId || "",
     });
   }
 
@@ -42,8 +46,8 @@ export async function initIndex(): Promise<void> {
   }));
 }
 
-export async function addToIndex(recordId: string): Promise<void> {
-  const record = await getRecord(recordId);
+export async function addToIndex(recordId: string, userId?: string): Promise<void> {
+  const record = await getRecord(recordId, userId);
   if (!record) return;
 
   const text = `${record.meta.title}\n${record.meta.summary}\n${(record.content || "").slice(0, 2000)}`;
@@ -56,6 +60,7 @@ export async function addToIndex(recordId: string): Promise<void> {
     text,
     title: record.meta.title,
     category: record.meta.category,
+    userId: userId || "",
   };
 
   if (existing >= 0) {
@@ -77,14 +82,19 @@ export interface SearchResult {
   snippet: string;
 }
 
-export async function semanticSearch(query: string, limit = 5): Promise<SearchResult[]> {
-  if (index.length === 0) await initIndex();
+export async function semanticSearch(query: string, userId?: string, limit = 5): Promise<SearchResult[]> {
+  if (userId && (!initialized || indexUserId !== userId)) {
+    initialized = false;
+    await initIndex(userId);
+  }
+  if (index.length === 0) await initIndex(userId);
   if (index.length === 0) return [];
 
   const { vector: queryVec } = await embedText(query);
   if (queryVec.length === 0) return [];
 
   const scored = index
+    .filter((item) => !userId || item.userId === userId)
     .map((item) => ({
       ...item,
       score: cosineSimilarity(queryVec, item.vector),
@@ -101,14 +111,45 @@ export async function semanticSearch(query: string, limit = 5): Promise<SearchRe
   }));
 }
 
+/** Find records semantically similar to a given record */
+export async function findSimilar(recordId: string, userId?: string, limit = 3): Promise<SearchResult[]> {
+  if (userId && (!initialized || indexUserId !== userId)) {
+    initialized = false;
+    await initIndex(userId);
+  }
+  if (index.length === 0) await initIndex(userId);
+  if (index.length === 0) return [];
+
+  const item = index.find((i) => i.recordId === recordId);
+  if (!item) return [];
+
+  const scored = index
+    .filter((i) => i.recordId !== recordId && (!userId || i.userId === userId))
+    .map((i) => ({
+      ...i,
+      score: cosineSimilarity(item.vector, i.vector),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  return scored.map((i) => ({
+    recordId: i.recordId,
+    title: i.title,
+    category: i.category,
+    score: i.score,
+    snippet: i.text.slice(0, 150),
+  }));
+}
+
 export async function hybridSearch(
   query: string,
-  options?: { category?: string; limit?: number }
+  options?: { category?: string; limit?: number; userId?: string }
 ): Promise<SearchResult[]> {
   const limit = options?.limit || 5;
   const category = options?.category;
+  const userId = options?.userId;
 
-  const records = await getRecords();
+  const records = await getRecords(userId);
   const q = query.toLowerCase();
   let keywordResults = records.filter((r) => {
     if (category && category !== "all" && r.category !== category) return false;
@@ -118,7 +159,7 @@ export async function hybridSearch(
     );
   });
 
-  const semanticResults = await semanticSearch(query, limit * 2);
+  const semanticResults = await semanticSearch(query, userId, limit * 2);
 
   const scoreMap = new Map<string, number>();
   const K = 60;

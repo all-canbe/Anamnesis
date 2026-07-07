@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { CATEGORIES } from "@/lib/types";
-import { fetchArticle, fetchRSSFeed, importArticle, type ImportedArticle, type RSSFeedItem } from "@/lib/article-importer";
+import { fetchArticle, fetchRSSFeed, type ImportedArticle, type RSSFeedItem } from "@/lib/article-importer";
+import { importArticleAction } from "./actions/import-article";
 import {
   GlobeIcon,
   RSSIcon,
@@ -77,7 +78,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
     const importResults: ImportResult[] = [];
 
     if (mode === "url" && article) {
-      const result = await importArticle(article);
+      const result = await importArticleAction(article);
       importResults.push({
         title: article.title,
         status: result.ok ? "ok" : "error",
@@ -88,7 +89,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
       for (const item of selected) {
         try {
           const fetched = await fetchArticle(item.link);
-          const result = await importArticle(fetched);
+          const result = await importArticleAction(fetched);
           importResults.push({
             title: fetched.title,
             status: result.ok ? "ok" : "error",

@@ -9,6 +9,7 @@ import {
   tursoGetTags,
   tursoAddTag,
   tursoDeleteTag,
+  tursoGetPublicRecords,
   initTursoSchema,
 } from "./turso";
 import fs from "fs";
@@ -43,27 +44,33 @@ function relPath(absPath: string): string {
   return path.relative(process.cwd(), absPath).replace(/\\/g, "/");
 }
 
-export async function getRecords(): Promise<RecordMeta[]> {
+export async function getRecords(userId?: string): Promise<RecordMeta[]> {
   await ensureTurso();
-  if (isTursoConfigured()) {
+  if (isTursoConfigured() && userId) {
     try {
-      return await tursoGetRecords();
+      return await tursoGetRecords(userId);
+    } catch {}
+  }
+  // local fs fallback (no user isolation)
+  if (isTursoConfigured() && !userId) {
+    try {
+      return await tursoGetRecords("admin");
     } catch {}
   }
   const raw = fs.readFileSync(INDEX_PATH, "utf-8");
   return JSON.parse(raw);
 }
 
-export async function getRecord(id: string): Promise<ContentRecord | null> {
+export async function getRecord(id: string, userId?: string): Promise<ContentRecord | null> {
   await ensureTurso();
   if (isTursoConfigured()) {
     try {
-      const record = await tursoGetRecord(id);
+      const record = await tursoGetRecord(id, userId);
       if (record) return record;
     } catch {}
   }
 
-  const records = await getRecords();
+  const records = await getRecords(userId);
   const meta = records.find((r) => r.id === id);
   if (!meta) return null;
 
@@ -78,22 +85,28 @@ export async function getRecord(id: string): Promise<ContentRecord | null> {
   return { meta, content };
 }
 
-export async function getCategories(): Promise<string[]> {
-  const records = await getRecords();
+export async function getCategories(userId?: string): Promise<string[]> {
+  const records = await getRecords(userId);
   return [...new Set(records.map((r) => r.category))];
 }
 
-export async function getFilteredRecords(category?: string): Promise<RecordMeta[]> {
-  const records = await getRecords();
+export async function getFilteredRecords(category?: string, userId?: string): Promise<RecordMeta[]> {
+  const records = await getRecords(userId);
   if (!category || category === "all") return records;
   return records.filter((r) => r.category === category);
 }
 
-let _nextId = 12;
-
-export function generateId(): string {
-  _nextId++;
-  return `k${_nextId}`;
+export async function generateId(userId?: string): Promise<string> {
+  try {
+    const records = await getRecords(userId);
+    const maxId = records.reduce((max, r) => {
+      const num = parseInt((r.id || "k0").replace("k", ""), 10);
+      return num > max ? num : max;
+    }, 0);
+    return `k${maxId + 1}`;
+  } catch {
+    return `k${Date.now().toString(36)}`;
+  }
 }
 
 function buildFrontmatter(meta: RecordMeta, content: string): string {
@@ -123,13 +136,13 @@ function buildIndex(): RecordMeta[] {
   return index;
 }
 
-export async function writeRecord(meta: RecordMeta, content: string): Promise<void> {
+export async function writeRecord(meta: RecordMeta, content: string, userId?: string): Promise<void> {
   await ensureTurso();
 
   // Primary: Turso
   if (isTursoConfigured()) {
     try {
-      await tursoWriteRecord(meta, content);
+      await tursoWriteRecord(meta, content, userId || "admin");
       return;
     } catch {}
   }
@@ -158,13 +171,13 @@ export async function writeRecord(meta: RecordMeta, content: string): Promise<vo
   }
 }
 
-export async function deleteRecord(id: string): Promise<void> {
+export async function deleteRecord(id: string, userId?: string): Promise<void> {
   await ensureTurso();
 
   // Primary: Turso
   if (isTursoConfigured()) {
     try {
-      await tursoDeleteRecord(id);
+      await tursoDeleteRecord(id, userId);
       return;
     } catch {}
   }
@@ -191,59 +204,66 @@ export async function deleteRecord(id: string): Promise<void> {
   }
 }
 
-export async function getTags(): Promise<Record<string, { label: string; icon: string }>> {
+export async function getTags(userId?: string): Promise<Record<string, { label: string; icon: string; color: string; isPublic?: boolean }>> {
   await ensureTurso();
   if (isTursoConfigured()) {
     try {
-      return await tursoGetTags();
+      return await tursoGetTags(userId);
     } catch {}
   }
 
-  if (!fs.existsSync(TAGS_PATH)) return { ...CATEGORIES };
+  if (!fs.existsSync(TAGS_PATH)) return Object.fromEntries(
+    Object.entries(CATEGORIES).map(([k, v]) => [k, { ...v, color: "#3b82f6", isPublic: true }])
+  ) as Record<string, { label: string; icon: string; color: string; isPublic?: boolean }>;
   try {
     const custom = JSON.parse(fs.readFileSync(TAGS_PATH, "utf-8"));
-    return { ...CATEGORIES, ...custom };
+    const base = Object.fromEntries(
+      Object.entries(CATEGORIES).map(([k, v]) => [k, { ...v, color: "#3b82f6", isPublic: true }])
+    );
+    return { ...base, ...custom };
   } catch {
-    return { ...CATEGORIES };
+    return Object.fromEntries(
+      Object.entries(CATEGORIES).map(([k, v]) => [k, { ...v, color: "#3b82f6", isPublic: true }])
+    ) as Record<string, { label: string; icon: string; color: string; isPublic?: boolean }>;
   }
 }
 
-export async function addTag(key: string, label: string, icon: string): Promise<void> {
+export async function addTag(key: string, label: string, icon: string, color = "#3b82f6", userId?: string): Promise<void> {
   await ensureTurso();
 
   if (isTursoConfigured()) {
     try {
-      await tursoAddTag(key, label, icon);
+      await tursoAddTag(key, label, icon, color, userId);
       return;
     } catch {}
   }
 
   if (canWriteLocal()) {
-    let tagFile: Record<string, { label: string; icon: string }> = {};
+    let tagFile: Record<string, { label: string; icon: string; color: string }> = {};
     if (fs.existsSync(TAGS_PATH)) {
       try { tagFile = JSON.parse(fs.readFileSync(TAGS_PATH, "utf-8")); } catch {}
     }
-    Object.assign(tagFile, { [key]: { label, icon } });
+    Object.assign(tagFile, { [key]: { label, icon, color } });
     fs.writeFileSync(TAGS_PATH, JSON.stringify(tagFile, null, 2));
     return;
   }
 
   if (isGithubMode()) {
     const current = await getTags();
-    const merged = { ...current, [key]: { label, icon } };
+    const merged = { ...current, [key]: { label, icon, color } };
     await commitFile(relPath(TAGS_PATH), JSON.stringify(merged, null, 2), `Add tag: ${key}`);
   } else {
     throw new Error("No writable storage available.");
   }
 }
 
-export async function deleteTag(key: string): Promise<void> {
+export async function deleteTag(key: string, userId?: string): Promise<void> {
   if (key in CATEGORIES) return;
   await ensureTurso();
 
   if (isTursoConfigured()) {
     try {
-      await tursoDeleteTag(key);
+      await tursoDeleteTag(key, userId);
       return;
     } catch {}
   }
@@ -265,4 +285,14 @@ export async function deleteTag(key: string): Promise<void> {
   } else {
     throw new Error("No writable storage available.");
   }
+}
+
+export async function getPublicRecords(category?: string): Promise<RecordMeta[]> {
+  await ensureTurso();
+  if (isTursoConfigured()) {
+    try {
+      return await tursoGetPublicRecords(category);
+    } catch {}
+  }
+  return [];
 }

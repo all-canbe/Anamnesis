@@ -1,44 +1,61 @@
-// Simple server-side token auth for CLI API access
-// Single account: admin / kb65
+import bcrypt from "bcryptjs";
+import { SignJWT, jwtVerify } from "jose";
+import { randomUUID } from "crypto";
 
-const CREDENTIALS = { username: "admin", password: "kb65" };
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
+const JWT_SECRET = process.env.JWT_SECRET;
+
 const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// In-memory token store (per serverless instance, but acceptable for CLI use)
-const tokens = new Map<string, { token: string; createdAt: number }>();
-
-function generateToken(): string {
-  const arr = new Uint8Array(32);
-  crypto.getRandomValues(arr);
-  return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-export function createToken(): string {
-  const token = generateToken();
-  tokens.set(token, { token, createdAt: Date.now() });
-  // Keep map size manageable
-  if (tokens.size > 100) {
-    const oldest = [...tokens.entries()]
-      .filter(([, v]) => Date.now() - v.createdAt > TOKEN_EXPIRY_MS)
-      .map(([k]) => k);
-    oldest.forEach((k) => tokens.delete(k));
+// Validate environment variables at startup
+export function validateAuthEnv(): void {
+  if (!ADMIN_USERNAME || !ADMIN_PASSWORD_HASH || !JWT_SECRET) {
+    throw new Error(
+      "Missing required auth environment variables: ADMIN_USERNAME, ADMIN_PASSWORD_HASH, JWT_SECRET\n" +
+      "Please set these in .env.local before starting the server."
+    );
   }
-  return token;
-}
-
-export function verifyToken(token: string): boolean {
-  const entry = tokens.get(token);
-  if (!entry) return false;
-  if (Date.now() - entry.createdAt > TOKEN_EXPIRY_MS) {
-    tokens.delete(token);
-    return false;
+  if (Buffer.from(JWT_SECRET).length < 32) {
+    throw new Error("JWT_SECRET must be at least 32 characters long");
   }
-  return true;
 }
 
-export function validateCredentials(
+// Create a JWT token
+export async function createToken(username: string): Promise<string> {
+  validateAuthEnv();
+  const secret = new TextEncoder().encode(JWT_SECRET!);
+  return new SignJWT({ sub: username })
+    .setProtectedHeader({ alg: "HS256" })
+    .setJti(randomUUID())
+    .setIssuedAt()
+    .setExpirationTime("24h")
+    .sign(secret);
+}
+
+// Verify a JWT token and extract username
+export async function verifyToken(token: string): Promise<string | null> {
+  if (!token || !JWT_SECRET) return null;
+  try {
+    const secret = new TextEncoder().encode(JWT_SECRET);
+    const { payload } = await jwtVerify(token, secret);
+    return (payload.sub as string) || null;
+  } catch {
+    return null;
+  }
+}
+
+// Validate credentials and return a token if valid
+export async function validateCredentials(
   username: string,
   password: string
-): boolean {
-  return username === CREDENTIALS.username && password === CREDENTIALS.password;
+): Promise<boolean> {
+  validateAuthEnv();
+  if (username !== ADMIN_USERNAME) return false;
+  return bcrypt.compare(password, ADMIN_PASSWORD_HASH!);
+}
+
+// Hash a password for initial setup
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, 10);
 }

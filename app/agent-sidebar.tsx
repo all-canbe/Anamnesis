@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useLanguage } from "@/lib/language-context";
 import { mdToHtml } from "@/lib/md-to-html";
 import {
@@ -23,16 +23,32 @@ import {
   BotIcon,
   UserIcon,
   CloseIcon,
+  SparklesIcon,
+  CheckIcon,
+  BookOpenIcon,
 } from "@/lib/icons";
+import {
+  type SlashCommand,
+  filterCommands,
+  SLASH_COMMANDS,
+} from "@/lib/slash-commands";
+import { SlashCommandPanel } from "./slash-panel";
 
 function renderMarkdown(text: string): string {
-  let html = mdToHtml(text);
-  html = html
-    .replace(/\n/g, "<br>")
-    .replace(/<br><br><\/p>/g, "</p>")
-    .replace(/<p><br>/g, "<p>");
-  return html;
+  return mdToHtml(text);
 }
+
+function renderUserContent(content: string): { __html: string } {
+    const text = content.trimStart();
+    const sorted = [...SLASH_COMMANDS].sort((a, b) => b.name.length - a.name.length);
+    const matched = sorted.find((cmd) => text.startsWith(`/${cmd.name}`));
+    if (!matched) return { __html: renderMarkdown(content) };
+    const prefix = `/${matched.name}`;
+    const rest = text.slice(prefix.length).trimStart();
+    const pill = `<span class="agent-msg-command-pill">${prefix}</span>`;
+    if (!rest) return { __html: pill };
+    return { __html: `${pill} ${renderMarkdown(rest)}` };
+  }
 
 export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const { t } = useLanguage();
@@ -41,14 +57,28 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [streamContent, setStreamContent] = useState("");
-  const [displayedContent, setDisplayedContent] = useState("");
+  const [toolStatus, setToolStatus] = useState("");
+  const [thinking, setThinking] = useState(false); // 等待首字响应
+  const [errorMessage, setErrorMessage] = useState(""); // 持久化错误消息
   const [showSessionList, setShowSessionList] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [slashIndex, setSlashIndex] = useState(0);
+  const [activeSlash, setActiveSlash] = useState<SlashCommand | null>(null);
+  const [cursorAtStart, setCursorAtStart] = useState(true);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
-  const typewriterRef = useRef<number | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const [textareaMaxHeight, setTextareaMaxHeight] = useState(120);
+  const [sidebarWidth, setSidebarWidth] = useState(300);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(300);
 
   const activeSession = sessions.find((s) => s.id === activeId);
   const messages = activeSession?.messages || [];
@@ -71,41 +101,56 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, displayedContent]);
+  }, [messages, streamContent]);
 
   useEffect(() => {
     if (renamingId) renameInputRef.current?.focus();
   }, [renamingId]);
 
+  // ResizeObserver: 动态计算 textarea 最大高度 = .agent-messages 的 40%
   useEffect(() => {
-    if (!streaming || !streamContent) {
-      setDisplayedContent(streamContent);
-      return;
+    const el = messagesRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      setTextareaMaxHeight(Math.floor(el.clientHeight * 0.4));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // 拖拽拉宽侧边栏
+  useEffect(() => {
+    if (!isDragging) return;
+
+    function handleMouseMove(e: MouseEvent) {
+      const delta = dragStartX.current - e.clientX; // 向左拖 = 变宽
+      const newWidth = Math.max(280, Math.min(600, dragStartWidth.current + delta));
+      setSidebarWidth(newWidth);
     }
 
-    let idx = 0;
-    const fullText = streamContent;
-
-    function tick() {
-      if (idx < fullText.length) {
-        idx += 2;
-        setDisplayedContent(fullText.slice(0, idx));
-        typewriterRef.current = window.setTimeout(tick, 8);
-      } else {
-        setDisplayedContent(fullText);
-      }
+    function handleMouseUp() {
+      setIsDragging(false);
     }
 
-    tick();
-
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
     return () => {
-      if (typewriterRef.current) clearTimeout(typewriterRef.current);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [streamContent, streaming]);
+  }, [isDragging]);
+
+  function handleDragStart(e: React.MouseEvent) {
+    e.preventDefault();
+    setIsDragging(true);
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = sidebarWidth;
+  }
 
   function switchSession(id: string) {
     setActiveId(id);
     setShowSessionList(false);
+    setShowClearConfirm(false);
   }
 
   function handleNewSession() {
@@ -139,27 +184,60 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
   }
 
   function handleClearSession() {
+    if (!showClearConfirm) {
+      setShowClearConfirm(true);
+      return;
+    }
     setSessions((prev) =>
       prev.map((s) =>
         s.id === activeId ? { ...s, messages: [], title: "新对话", updatedAt: Date.now() } : s
       )
     );
+    setShowClearConfirm(false);
   }
 
   function handleCopyMessage(content: string) {
     navigator.clipboard.writeText(content);
   }
 
+  // Extract knowledge base references from message content
+  function extractSources(content: string): { id: string; label: string }[] {
+    const matches = content.match(/\[k\d+\]/g);
+    if (!matches) return [];
+    return [...new Set(matches)].map((m) => ({ id: m.slice(1, -1), label: m }));
+  }
+
   const sendMessage = useCallback(async () => {
-    const text = input.trim();
+    if (sending) return;
+    const body = input.trim();
+    const text = activeSlash
+      ? `${activeSlash.template.replace("{input}", body).trimEnd()}${body ? " " + body : ""}`.trim()
+      : body;
     if (!text || streaming || !activeId) return;
+    setSending(true);
+
+    // 检查 API 配置
+    try {
+      const res = await fetch("/api/settings");
+      const data = await res.json();
+      if (!data.configured) {
+        setErrorMessage("**Agent 未配置**\n\n请在左侧设置中填入 LLM API Key 和 Base URL。\n\n点击左下角齿轮图标打开设置 → Agent 标签页。");
+        return;
+      }
+    } catch {
+      // 网络错误，继续尝试发送
+    }
+
     setInput("");
+    setActiveSlash(null);
 
     const userMsg: ChatMessage = { role: "user", content: text };
     setSessions((prev) => addMessage(prev, activeId, userMsg));
     setStreaming(true);
     setStreamContent("");
-    setDisplayedContent("");
+    setToolStatus("");
+    setThinking(true);
+    setErrorMessage("");
 
     const abort = new AbortController();
     abortRef.current = abort;
@@ -169,22 +247,18 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
       const session = currentSessions.find((s) => s.id === activeId);
       const history = session ? getContextForLLM(session.messages) : [];
 
-      const agentConfigRaw = localStorage.getItem("zhiyi-agent-config");
-      let agentConfig = {};
-      if (agentConfigRaw) {
-        try { agentConfig = JSON.parse(agentConfigRaw); } catch {}
-      }
-
       const res = await fetch("/api/agent/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history, agentConfig }),
+        body: JSON.stringify({ message: text, history, skillId: activeSlash?.id ?? null, tool: activeSlash?.tool ?? null }),
         signal: abort.signal,
       });
 
       if (!res.ok || !res.body) {
-        setStreamContent("Failed to connect to agent. Is LLM_API_KEY configured?");
-        setStreaming(false);
+        const msg = res.status === 401
+          ? "**认证失败**\n\nAPI Key 无效，请在设置中检查。"
+          : "**连接失败**\n\n无法连接到 LLM 服务，请检查 Base URL 是否正确。";
+        setStreamContent(msg);
         return;
       }
 
@@ -208,12 +282,23 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
             if (data.type === "delta") {
               fullContent += data.content;
               setStreamContent(fullContent);
-            } else if (data.type === "tool") {
-              fullContent += `\n\n**Using tool:** \`${data.name}\`...\n\n`;
-              setStreamContent(fullContent);
+              setThinking(false);
+            } else if (data.type === "tool_start") {
+              setToolStatus(`正在执行: ${data.name}...`);
+              setThinking(false);
+            } else if (data.type === "tool_end") {
+              setToolStatus(data.status === "error" ? `工具 ${data.name} 执行失败` : "");
+            } else if (data.type === "tool" || data.type === "tool_done") {
+              // 兼容旧事件
+              if (data.type === "tool") setToolStatus(`Using tool: ${data.name}...`);
+              else setToolStatus("");
+            } else if (data.type === "done") {
+              setToolStatus("");
+              setThinking(false);
             } else if (data.type === "error") {
-              fullContent += `\n\n**Error:** ${data.content}`;
-              setStreamContent(fullContent);
+              setToolStatus("");
+              setThinking(false);
+              setErrorMessage(data.content || "未知错误");
             }
           } catch {}
         }
@@ -222,30 +307,110 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
       if (fullContent) {
         const assistantMsg: ChatMessage = { role: "assistant", content: fullContent };
         setSessions((prev) => addMessage(prev, activeId, assistantMsg));
+      } else if (!errorMessage) {
+        setErrorMessage("LLM 服务未返回内容，请检查 API Key 和 Base URL 是否正确。");
       }
     } catch (err: any) {
       if (err.name !== "AbortError") {
-        setStreamContent(`Error: ${err.message}`);
+        setErrorMessage(`网络错误: ${err.message}`);
       }
     } finally {
       setStreaming(false);
-      setStreamContent("");
-      setDisplayedContent("");
+      setSending(false);
       abortRef.current = null;
     }
-  }, [input, streaming, activeId]);
+  }, [input, streaming, activeId, activeSlash, sending]);
 
   function handleKeyDown(e: React.KeyboardEvent) {
+    if (slashOpen) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSlashIndex((i) => Math.min(i + 1, slashTotal - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSlashIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const allItems = [..._cmds, ..._sk];
+        if (allItems[slashIndex]) {
+          handleSlashSelect(allItems[slashIndex]);
+        }
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeSlash();
+        return;
+      }
+      return;
+    }
+
+    if (e.key === "Backspace" && activeSlash && input === "") {
+      e.preventDefault();
+      setActiveSlash(null);
+      return;
+    }
+
+    if (e.key === "/" && cursorAtStart) {
+      e.preventDefault();
+      if (activeSlash) setActiveSlash(null);
+      setInput("/");
+      setSlashOpen(true);
+      setSlashIndex(0);
+      return;
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      if (!sending) sendMessage();
     }
+  }
+
+  function updateCursorAtStart() {
+    const el = inputRef.current;
+    if (!el) return;
+    setCursorAtStart(el.selectionStart === 0);
   }
 
   const showWelcome = messages.length === 0 && !streaming;
 
+  // Slash command filter: everything after the leading "/"
+  const slashFilter = useMemo(() => {
+    if (!slashOpen || !input.startsWith("/")) return "";
+    return input.slice(1);
+  }, [input, slashOpen]);
+
+  const { commands: _cmds, skills: _sk } = useMemo(
+    () => filterCommands(slashFilter),
+    [slashFilter]
+  );
+  const slashTotal = _cmds.length + _sk.length;
+
+  function handleSlashSelect(cmd: SlashCommand) {
+    setActiveSlash(cmd);
+    setInput("");
+    setSlashOpen(false);
+    setSlashIndex(0);
+    inputRef.current?.focus();
+  }
+
+  function closeSlash() {
+    setSlashOpen(false);
+    setSlashIndex(0);
+  }
+
   return (
-    <aside className={`agent-sidebar${open ? "" : " collapsed"}`}>
+    <aside className={`agent-sidebar${open ? "" : " collapsed"}`} style={{ width: open ? sidebarWidth : 40 }}>
+      {open && (
+        <div
+          className="agent-resize-handle"
+          onMouseDown={handleDragStart}
+        />
+      )}
       <div className="agent-sidebar-header">
         {open ? (
           <>
@@ -257,9 +422,10 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
               <button className="agent-header-btn icon-btn" onClick={() => setShowSessionList((v) => !v)} title="Sessions">
                 <MenuIcon size={14} />
               </button>
-              <button className="agent-header-btn icon-btn" onClick={handleClearSession} title="Clear conversation">
-                <TrashIcon size={14} />
+              <button className="agent-header-btn icon-btn" onClick={handleClearSession} title={showClearConfirm ? "Click again to confirm" : "Clear conversation"}>
+                {showClearConfirm ? <CheckIcon size={14} /> : <TrashIcon size={14} />}
               </button>
+              {showClearConfirm && <span className="agent-clear-confirm-text">Click again to clear</span>}
               <button className="agent-sidebar-toggle icon-btn" onClick={onToggle} title={t("agentCollapse")}>
                 <ChevronRightIcon size={14} />
               </button>
@@ -323,7 +489,7 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
             </div>
           )}
 
-          <div className="agent-messages">
+          <div className="agent-messages" ref={messagesRef}>
             {showWelcome && !showSessionList && (
               <div className="agent-welcome">
                 <p>{t("agentWelcome")}</p>
@@ -336,13 +502,15 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
               </div>
             )}
 
-            {messages.map((msg, i) => (
+            {messages.map((msg, i) => {
+              const sources = msg.role === "assistant" ? extractSources(msg.content) : [];
+              return (
               <div key={i} className={`agent-msg agent-msg-${msg.role}`}>
                 <div className="agent-msg-avatar">{msg.role === "assistant" ? <BotIcon size={16} /> : <UserIcon size={16} />}</div>
                 <div className="agent-msg-content-wrap">
                   <div
                     className="agent-msg-content agent-msg-html"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                    dangerouslySetInnerHTML={msg.role === "user" ? renderUserContent(msg.content) : { __html: renderMarkdown(msg.content) }}
                   />
                   <button
                     className="agent-msg-copy icon-btn"
@@ -351,9 +519,49 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
                   >
                     <CopyIcon size={12} />
                   </button>
+                  {sources.length > 0 && (
+                    <div className="agent-sources">
+                      <div className="agent-sources-label"><BookOpenIcon size={12} /> Sources</div>
+                      <div className="agent-sources-list">
+                        {sources.map((s) => (
+                          <a
+                            key={s.id}
+                            href={`/records/${s.id}`}
+                            className="agent-source-card"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <BookOpenIcon size={12} />
+                            <span>{s.label}</span>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-            ))}
+              );
+            })}
+
+            {streaming && toolStatus && (
+              <div className="agent-tool-status">
+                <SparklesIcon size={12} />
+                <span>{toolStatus}</span>
+              </div>
+            )}
+
+            {streaming && thinking && !streamContent && (
+              <div className="agent-msg agent-msg-assistant">
+                <div className="agent-msg-avatar"><BotIcon size={16} /></div>
+                <div className="agent-msg-content-wrap">
+                  <div className="agent-thinking">
+                    <span className="agent-thinking-dot" />
+                    <span className="agent-thinking-dot" />
+                    <span className="agent-thinking-dot" />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {streaming && streamContent && (
               <div className="agent-msg agent-msg-assistant">
@@ -361,11 +569,21 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
                 <div className="agent-msg-content-wrap">
                   <div
                     className="agent-msg-content agent-msg-html"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(displayedContent) }}
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(streamContent) }}
                   />
-                  {displayedContent.length < streamContent.length && (
-                    <span className="agent-cursor">▊</span>
-                  )}
+                  <span className="agent-cursor">▊</span>
+                </div>
+              </div>
+            )}
+
+            {errorMessage && (
+              <div className="agent-msg agent-msg-assistant">
+                <div className="agent-msg-avatar"><BotIcon size={16} /></div>
+                <div className="agent-msg-content-wrap">
+                  <div
+                    className="agent-msg-content agent-msg-html"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(errorMessage) }}
+                  />
                 </div>
               </div>
             )}
@@ -373,26 +591,77 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="agent-sidebar-footer">
-            <div className="agent-input-row">
-              <input
+        </div>
+      )}
+
+      {open && (
+        <div className="agent-sidebar-footer">
+          <div className="agent-input-row">
+            {activeSlash && (
+              <div className="agent-slash-pill-row">
+                <span className="agent-slash-pill">
+                  /{activeSlash.name}
+                  <button
+                    type="button"
+                    className="agent-slash-pill-remove"
+                    onClick={() => {
+                      setActiveSlash(null);
+                      inputRef.current?.focus();
+                    }}
+                    tabIndex={-1}
+                  >
+                    ×
+                  </button>
+                </span>
+              </div>
+            )}
+            <textarea
+                ref={inputRef}
                 className="agent-input"
-                type="text"
+                rows={1}
+                style={{ maxHeight: `${textareaMaxHeight}px` }}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setInput(val);
+                  updateCursorAtStart();
+                  if (slashOpen && !val.startsWith("/")) {
+                    setSlashOpen(false);
+                    setSlashIndex(0);
+                  }
+                }}
                 onKeyDown={handleKeyDown}
+                onKeyUp={updateCursorAtStart}
+                onClick={updateCursorAtStart}
+                onSelect={updateCursorAtStart}
                 placeholder={t("agentPlaceholder")}
                 disabled={streaming}
               />
-              <button
-                className="agent-send-btn"
-                onClick={sendMessage}
-                disabled={streaming || !input.trim()}
-              >
-                {streaming ? "..." : t("agentSend")}
-              </button>
+            <div className="agent-input-toolbar">
+              <div className="toolbar-right">
+                <button
+                  className="agent-send-btn"
+                  onClick={sendMessage}
+                  disabled={streaming || sending || !input.trim()}
+                  title={t("agentSend")}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="19" x2="12" y2="5"/>
+                    <polyline points="5 12 12 5 19 12"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
+          <div className="agent-disclaimer">内容由 AI 生成，仅供参考</div>
+          {slashOpen && activeSlash === null && (
+            <SlashCommandPanel
+              filterText={slashFilter}
+              selectedIndex={slashIndex}
+              onSelect={handleSlashSelect}
+              anchorRef={inputRef}
+            />
+          )}
         </div>
       )}
     </aside>

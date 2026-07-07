@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { RecordMeta } from "@/lib/types";
 import { CATEGORIES, THUMB_COLORS } from "@/lib/types";
 import { useLanguage } from "@/lib/language-context";
-import { EditIcon, LinkIcon, ArrowLeftIcon, ArrowRightIcon, CodeIcon, BookOpenIcon, HomeIcon, CategoryIcon } from "@/lib/icons";
+import { ArrowLeftIcon, ArrowRightIcon, BookOpenIcon, HomeIcon, CategoryIcon, getCategorySvgPath } from "@/lib/icons";
 
 interface TocItem {
   tag: string;
@@ -25,8 +24,6 @@ export function DetailClient({
   category: string;
 }) {
   const { t } = useLanguage();
-  const router = useRouter();
-  const [copied, setCopied] = useState(false);
   const [tocItems, setTocItems] = useState<TocItem[]>([]);
   const [activeTocId, setActiveTocId] = useState("");
   const [readingProgress, setReadingProgress] = useState(0);
@@ -50,12 +47,12 @@ export function DetailClient({
     if (thumb) {
       const wrapper = document.createElement("span");
       wrapper.style.cssText = "font-size:48px;position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;";
-      wrapper.innerHTML = `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${getCategorySvgPath(category)}</svg>`;
+      wrapper.innerHTML = `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${getCategorySvgPath(category)}"/></svg>`;
       thumb.replaceWith(wrapper);
     }
   }, [category]);
 
-  // Extract TOC from content
+  // Extract TOC from content and create floating panel
   useEffect(() => {
     const temp = document.createElement("div");
     temp.innerHTML = contentHtml;
@@ -72,9 +69,72 @@ export function DetailClient({
     if (contentEl) {
       contentEl.innerHTML = temp.innerHTML;
     }
+
+    // Remove old floating panel if it exists
+    const old = document.getElementById("floating-toc");
+    if (old) old.remove();
+
+    // Create floating TOC panel
+    const panel = document.createElement("div");
+    panel.id = "floating-toc";
+    panel.className = "floating-toc";
+
+    if (items.length > 0) {
+      panel.innerHTML =
+        `<div class="floating-toc-title">Contents</div>` +
+        items.map((item) =>
+          `<a class="detail-toc-item ${item.tag}" href="#${item.id}" data-toc-id="${item.id}">${item.text}</a>`
+        ).join("");
+    }
+
+    document.body.appendChild(panel);
+
+    // Position the panel between nav-bar and detail-view
+    function reposition() {
+      const navBar = document.querySelector(".nav-bar");
+      const detailView = document.querySelector(".detail-view");
+      if (!navBar || !detailView || items.length === 0) return;
+
+      const navRect = navBar.getBoundingClientRect();
+      const detailRect = detailView.getBoundingClientRect();
+      const tocWidth = 200;
+      const minGap = 80;
+
+      const gap = detailRect.left - navRect.right;
+      const availWidth = gap;
+
+      const headerHeight = document.querySelector(".site-header")?.getBoundingClientRect().height || 56;
+
+      // Hide if too narrow
+      if (availWidth < tocWidth + minGap * 2) {
+        panel.style.display = "none";
+        return;
+      }
+      panel.style.display = "";
+
+      // Center TOC in the gap
+      const tocLeft = navRect.right + (availWidth - tocWidth) / 2;
+      const tocTop = Math.max(navRect.top + headerHeight + 16, 80);
+
+      panel.style.left = `${tocLeft}px`;
+      panel.style.top = `${tocTop}px`;
+      panel.style.width = `${tocWidth}px`;
+    }
+
+    reposition();
+
+    const ro = new ResizeObserver(reposition);
+    ro.observe(document.body);
+    window.addEventListener("scroll", reposition, { passive: true });
+
+    return () => {
+      panel.remove();
+      ro.disconnect();
+      window.removeEventListener("scroll", reposition);
+    };
   }, [contentHtml]);
 
-  // Active TOC tracking
+  // Active TOC tracking + click delegation
   useEffect(() => {
     if (tocItems.length === 0) return;
     const observer = new IntersectionObserver((entries) => {
@@ -90,8 +150,34 @@ export function DetailClient({
       if (el) observer.observe(el);
     });
 
-    return () => observer.disconnect();
+    const panel = document.getElementById("floating-toc");
+    function handleTocClick(e: Event) {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains("detail-toc-item")) {
+        e.preventDefault();
+        const href = target.getAttribute("href");
+        if (href) {
+          const el = document.getElementById(href.slice(1));
+          if (el) el.scrollIntoView({ behavior: "smooth" });
+        }
+      }
+    }
+    panel?.addEventListener("click", handleTocClick);
+
+    return () => {
+      observer.disconnect();
+      panel?.removeEventListener("click", handleTocClick);
+    };
   }, [tocItems]);
+
+  // Sync active TOC item
+  useEffect(() => {
+    const panel = document.getElementById("floating-toc");
+    if (!panel) return;
+    panel.querySelectorAll(".detail-toc-item").forEach((el) => {
+      el.classList.toggle("active", el.getAttribute("data-toc-id") === activeTocId);
+    });
+  }, [activeTocId]);
 
   // Code copy buttons
   useEffect(() => {
@@ -104,15 +190,15 @@ export function DetailClient({
 
       const btn = document.createElement("button");
       btn.className = "code-copy-btn icon-btn";
-      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>';
       btn.setAttribute("data-code", pre.textContent || "");
       btn.addEventListener("click", () => {
         const code = btn.getAttribute("data-code") || "";
         navigator.clipboard.writeText(code).then(() => {
-          btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+          btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
           btn.classList.add("copied");
           setTimeout(() => {
-            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
+            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>';
             btn.classList.remove("copied");
           }, 2000);
         });
@@ -121,53 +207,12 @@ export function DetailClient({
     });
   }, [contentHtml]);
 
-  const handleCopyLink = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {}
-  }, []);
-
   return (
     <>
       {/* Reading progress bar */}
       <div className="reading-progress">
         <div className="reading-progress-fill" style={{ width: `${readingProgress}%` }} />
       </div>
-
-      {/* Action buttons */}
-      <div className="detail-actions">
-        <button className="detail-action-btn" onClick={() => router.push(`/settings?edit=${recordId}`)}>
-          <EditIcon size={12} /> Edit
-        </button>
-        <button
-          className={`detail-action-btn${copied ? " copied" : ""}`}
-          onClick={handleCopyLink}
-        >
-          {copied ? <><CodeIcon size={12} /> Copied</> : <><LinkIcon size={12} /> Copy Link</>}
-        </button>
-      </div>
-
-      {/* TOC */}
-      {tocItems.length > 0 && (
-        <div className="detail-toc visible">
-          <div className="detail-toc-title"><BookOpenIcon size={10} /> Contents</div>
-          {tocItems.map((item) => (
-            <a
-              key={item.id}
-              className={`detail-toc-item ${item.tag}${activeTocId === item.id ? " active" : ""}`}
-              href={`#${item.id}`}
-              onClick={(e) => {
-                e.preventDefault();
-                document.getElementById(item.id)?.scrollIntoView({ behavior: "smooth" });
-              }}
-            >
-              {item.text}
-            </a>
-          ))}
-        </div>
-      )}
 
       {/* Navigation */}
       <nav className="detail-nav">
@@ -205,7 +250,7 @@ export function DetailClient({
                 <div
                   key={r.id}
                   className="similar-item"
-                  onClick={() => router.push(`/records/${r.id}`)}
+                  onClick={() => { window.location.href = `/records/${r.id}`; }}
                 >
                   <div className="similar-item-icon" style={{ background: color }}>
                     <CategoryIcon category={r.category} size={18} />
@@ -222,23 +267,4 @@ export function DetailClient({
       )}
     </>
   );
-}
-
-function getCategorySvgPath(category: string): string {
-  switch (category) {
-    case "frontend":
-      return '<path d="M6 4 Q3 4 3 7 L3 10 Q3 12 5 12 Q3 12 3 14 L3 17 Q3 20 6 20"/>';
-    case "backend":
-      return '<path d="M4 6 L20 6 L20 12 L4 12 L4 18 L20 18"/>';
-    case "ai":
-      return '<path d="M12 2 L13 9 L20 10 L13 11 L12 18 L11 11 L4 10 L11 9 Z"/>';
-    case "reading":
-      return '<path d="M4 5 L4 19 Q4 20 6 20 L12 20 L12 5 L18 5 Q20 5 20 7 L20 19"/>';
-    case "devops":
-      return '<path d="M12 4 A8 8 0 1 1 11.99 4 L12 8 L8 5 L12 2"/>';
-    case "design":
-      return '<path d="M12 2 L20 12 L12 22 L4 12 Z"/>';
-    default:
-      return '<path d="M6 4 Q3 4 3 7 L3 10 Q3 12 5 12 Q3 12 3 14 L3 17 Q3 20 6 20"/>';
-  }
 }
