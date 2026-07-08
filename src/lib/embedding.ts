@@ -1,5 +1,15 @@
 const EMBEDDING_API = (process.env.LLM_BASE_URL || "https://api.siliconflow.cn/v1").replace(/\/+$/, "");
-const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || "BAAI/bge-m3";
+let _embeddingModel = process.env.EMBEDDING_MODEL || "BAAI/bge-m3";
+
+/** 运行时设置 embedding 模型（如从 agent config 读取） */
+export function setEmbeddingModel(model: string): void {
+  if (model) _embeddingModel = model;
+}
+
+/** 获取当前 embedding 模型 */
+export function getEmbeddingModel(): string {
+  return _embeddingModel;
+}
 
 export interface EmbeddingResult {
   vector: number[];
@@ -20,7 +30,7 @@ export async function embedText(text: string): Promise<EmbeddingResult> {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: EMBEDDING_MODEL,
+        model: getEmbeddingModel(),
         input: text.slice(0, 8000),
       }),
       signal: AbortSignal.timeout(10000),
@@ -52,7 +62,7 @@ export async function embedBatch(texts: string[]): Promise<EmbeddingResult[]> {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: EMBEDDING_MODEL,
+        model: getEmbeddingModel(),
         input: texts.map((t) => t.slice(0, 8000)),
       }),
       signal: AbortSignal.timeout(30000),

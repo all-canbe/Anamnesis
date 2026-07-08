@@ -617,6 +617,37 @@ img { max-width: 100%; display: block; }
   gap: 8px;
 }
 
+/* 信息提示 tooltip */
+.info-tooltip-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: help;
+}
+.info-tooltip-wrapper .info-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-text);
+  color: var(--color-bg);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  white-space: normal;
+  max-width: 240px;
+  min-width: 180px;
+  text-align: left;
+  z-index: 100;
+  pointer-events: none;
+}
+.info-tooltip-wrapper:hover .info-tooltip {
+  display: block;
+}
+
 /* 登录对话框 */
 .login-dialog {
   background: var(--color-surface);

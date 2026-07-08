@@ -44,6 +44,10 @@ next-env.d.ts
 .trae/
 .workbuddy/
 
+# Zvec 向量数据库（运行时生成，不可提交）
+/zvec_data/
+/zvec_test_*/
+
 # Auto-generated reports
 PROJECT_BLUEPRINT.md
 QA-REPORT.md

@@ -300,7 +300,7 @@ describe("Security: SSRF Protection in web_fetch [F-006]", () => {
 
 describe("Security: Doom Loop Bypass Prevention", () => {
   const noopEnqueue = vi.fn();
-  const makeConfig = () => ({ baseUrl: "https://api.test.com/v1", apiKey: "sk-test", model: "test" });
+  const makeConfig = () => ({ baseUrl: "https://api.test.com/v1", apiKey: "sk-test", model: "test", embeddingModel: "BAAI/bge-m3", zvecEnabled: false });
 
   function makeCtx(recentToolCalls: Array<{ name: string; args: string }>) {
     return {

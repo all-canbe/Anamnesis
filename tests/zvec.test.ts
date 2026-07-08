@@ -29,6 +29,38 @@ vi.mock("@/lib/content", () => ({
   }),
 }));
 
+vi.mock("@zvec/zvec", () => ({
+  ZVecCreateAndOpen: vi.fn(() => ({
+    insertSync: vi.fn(),
+    upsertSync: vi.fn(),
+    deleteSync: vi.fn(),
+    querySync: vi.fn(() => []),
+    fetchSync: vi.fn(() => ({})),
+    optimizeSync: vi.fn(),
+  })),
+  ZVecCollectionSchema: vi.fn(),
+  ZVecDataType: { STRING: "STRING", VECTOR_FP32: "VECTOR_FP32", FLOAT: "FLOAT", INT32: "INT32" },
+}));
+
+vi.mock("@/lib/agent-config", () => ({
+  getAgentConfig: vi.fn(async () => ({
+    baseUrl: "https://api.test.com/v1",
+    apiKey: "sk-test",
+    model: "test-model",
+    embeddingModel: "BAAI/bge-m3",
+    zvecEnabled: false,
+  })),
+  hasAgentConfig: vi.fn(async () => ({
+    configured: false,
+    baseUrl: "https://api.test.com/v1",
+    model: "test-model",
+    embeddingModel: "BAAI/bge-m3",
+    zvecEnabled: false,
+  })),
+  saveAgentConfig: vi.fn(async () => {}),
+  writeEnvLocal: vi.fn(() => {}),
+}));
+
 vi.mock("@/lib/embedding", () => ({
   embedText: vi.fn(async (text: string) => {
     if (text.includes("AI")) return { vector: [0.5, 0.3, 0.1, 0.0], dimensions: 4 };

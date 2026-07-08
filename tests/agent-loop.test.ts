@@ -62,7 +62,7 @@ vi.mock("@/lib/agent-tools", async (importOriginal) => {
 // ─── Helpers ───
 
 function makeConfig(): AgentConfig {
-  return { baseUrl: "https://api.test.com/v1", apiKey: "sk-test", model: "test-model" };
+  return { baseUrl: "https://api.test.com/v1", apiKey: "sk-test", model: "test-model", embeddingModel: "BAAI/bge-m3", zvecEnabled: false };
 }
 
 function makeCtx(overrides?: Partial<{

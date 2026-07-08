@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { SunIcon, MoonIcon, MonitorIcon, CloseIcon, BotIcon } from "@/lib/icons";
+import { SunIcon, MoonIcon, MonitorIcon, CloseIcon, BotIcon, InfoIcon, DatabaseIcon } from "@/lib/icons";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -20,6 +20,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [keyPreview, setKeyPreview] = useState(""); // 脱敏后的 Key 预览
   const [keyFocused, setKeyFocused] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [zvecEnabled, setZvecEnabled] = useState(false);
+  const [embeddingModel, setEmbeddingModel] = useState("BAAI/bge-m3");
 
   // 加载配置
   const loadSettings = useCallback(async () => {
@@ -37,6 +39,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       setKeyPreview(data.keyPreview || "");
       setApiKey(""); // 清空输入框，用户需手动输入新密钥
       setKeyFocused(false);
+      setZvecEnabled(data.zvecEnabled || false);
+      setEmbeddingModel(data.embeddingModel || "BAAI/bge-m3");
     } catch {
       setLoadError("加载配置失败，请检查网络或登录状态");
     }
@@ -77,7 +81,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (!apiKey && !hasKey) return; // 首次配置必须提供 Key
     setLoading(true);
     try {
-      const body: Record<string, string> = { baseUrl, model };
+      const body: Record<string, string | boolean> = { baseUrl, model, embeddingModel, zvecEnabled };
       if (apiKey) body.apiKey = apiKey;
 
       const res = await fetch("/api/settings", {
@@ -205,6 +209,45 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 {loading ? "保存中..." : "保存"}
               </button>
             </div>
+          </div>
+
+          {/* Vector Search */}
+          <div className="settings-group">
+            <div className="settings-group-title">
+              <DatabaseIcon size={12} /> Vector Search
+            </div>
+
+            <div className="settings-row">
+              <div className="settings-row-label" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                Zvec
+                <span className="info-tooltip-wrapper">
+                  <InfoIcon size={14} />
+                  <span className="info-tooltip">
+                    当前使用内存索引，重启后数据丢失。开启 Zvec 可启用嵌入式向量数据库持久化存储。
+                  </span>
+                </span>
+              </div>
+              <label className="settings-checkbox-row" style={{ marginLeft: "auto" }}>
+                <input
+                  type="checkbox"
+                  checked={zvecEnabled}
+                  onChange={(e) => setZvecEnabled(e.target.checked)}
+                />
+              </label>
+            </div>
+
+            {zvecEnabled && (
+              <div className="settings-row">
+                <div className="settings-row-label">Embedding Model</div>
+                <input
+                  className="settings-input"
+                  type="text"
+                  value={embeddingModel}
+                  onChange={(e) => setEmbeddingModel(e.target.value)}
+                  placeholder="e.g. BAAI/bge-m3"
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

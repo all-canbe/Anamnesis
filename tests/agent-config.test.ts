@@ -46,10 +46,13 @@ describe("agent-config", () => {
 
   describe("getAgentConfig", () => {
     it("should return config from DB when available", async () => {
-      mockGetSetting.mockImplementation((key: string) => {
-        if (key === "admin:agent_baseUrl") return "https://api.example.com/v1";
-        if (key === "admin:agent_apiKey") return "sk-test-key";
-        if (key === "admin:agent_model") return "test-model";
+      mockGetSetting.mockImplementation((key: string, userId?: string) => {
+        // getSetting already adds userId prefix internally, just check the key
+        if (key === "agent_baseUrl") return "https://api.example.com/v1";
+        if (key === "agent_apiKey") return "sk-test-key";
+        if (key === "agent_model") return "test-model";
+        if (key === "embedding_model") return "BAAI/bge-m3";
+        if (key === "zvec_enabled") return "false";
         return null;
       });
 
@@ -71,9 +74,10 @@ describe("agent-config", () => {
     });
 
     it("should use default model when DB has no model", async () => {
-      mockGetSetting.mockImplementation((key: string) => {
-        if (key === "admin:agent_baseUrl") return "https://custom.api/v1";
-        if (key === "admin:agent_apiKey") return "sk-custom";
+      mockGetSetting.mockImplementation((key: string, userId?: string) => {
+        // getSetting already adds userId prefix internally
+        if (key === "agent_baseUrl") return "https://custom.api/v1";
+        if (key === "agent_apiKey") return "sk-custom";
         return null;
       });
 
@@ -84,8 +88,9 @@ describe("agent-config", () => {
     });
 
     it("should return empty apiKey when DB has no key", async () => {
-      mockGetSetting.mockImplementation((key: string) => {
-        if (key === "admin:agent_baseUrl") return "https://custom.api/v1";
+      mockGetSetting.mockImplementation((key: string, userId?: string) => {
+        // getSetting already adds userId prefix internally
+        if (key === "agent_baseUrl") return "https://custom.api/v1";
         return null;
       });
 
@@ -105,6 +110,8 @@ describe("agent-config", () => {
         baseUrl: "https://api.test.com/v1",
         apiKey: "sk-save-test",
         model: "save-model",
+        embeddingModel: "BAAI/bge-m3",
+        zvecEnabled: false,
       }, TEST_USER);
 
       expect(mockSetSetting).toHaveBeenCalledWith("agent_baseUrl", "https://api.test.com/v1", TEST_USER);
@@ -116,7 +123,7 @@ describe("agent-config", () => {
 
       const { saveAgentConfig } = await import("@/lib/agent-config");
       await saveAgentConfig(
-        { baseUrl: "https://api.test.com/v1", apiKey: "sk-secret", model: "m" },
+        { baseUrl: "https://api.test.com/v1", apiKey: "sk-secret", model: "m", embeddingModel: "BAAI/bge-m3", zvecEnabled: false },
         TEST_USER,
         true,
       );
@@ -133,6 +140,8 @@ describe("agent-config", () => {
         baseUrl: "https://fallback.test.com/v1",
         apiKey: "sk-fallback",
         model: "fallback-model",
+        embeddingModel: "BAAI/bge-m3",
+        zvecEnabled: false,
       }, TEST_USER)).rejects.toThrow("DB write error");
     });
 
@@ -146,6 +155,8 @@ describe("agent-config", () => {
         baseUrl: "https://api.test.com/v1",
         apiKey: "sk-secret-key",
         model: "m",
+        embeddingModel: "BAAI/bge-m3",
+        zvecEnabled: false,
       }, TEST_USER);
 
       const apiKeyCall = mockSetSetting.mock.calls.find((c: any[]) => c[0] === "agent_apiKey");
@@ -159,10 +170,13 @@ describe("agent-config", () => {
 
   describe("hasAgentConfig", () => {
     it("should return configured: true when DB has key", async () => {
-      mockGetSetting.mockImplementation((key: string) => {
-        if (key === "admin:agent_baseUrl") return "https://api.example.com/v1";
-        if (key === "admin:agent_apiKey") return "sk-test-key-1234567890";
-        if (key === "admin:agent_model") return "test-model";
+      mockGetSetting.mockImplementation((key: string, userId?: string) => {
+        // getSetting already adds userId prefix internally
+        if (key === "agent_baseUrl") return "https://api.example.com/v1";
+        if (key === "agent_apiKey") return "sk-test-key-1234567890";
+        if (key === "agent_model") return "test-model";
+        if (key === "embedding_model") return "BAAI/bge-m3";
+        if (key === "zvec_enabled") return "false";
         return null;
       });
 
@@ -183,9 +197,10 @@ describe("agent-config", () => {
     });
 
     it("should mask short keys (<=8 chars) correctly", async () => {
-      mockGetSetting.mockImplementation((key: string) => {
-        if (key === "admin:agent_baseUrl") return "https://api.example.com/v1";
-        if (key === "admin:agent_apiKey") return "ab123456";
+      mockGetSetting.mockImplementation((key: string, userId?: string) => {
+        // getSetting already adds userId prefix internally
+        if (key === "agent_baseUrl") return "https://api.example.com/v1";
+        if (key === "agent_apiKey") return "ab123456";
         return null;
       });
 
@@ -196,9 +211,10 @@ describe("agent-config", () => {
     });
 
     it("should mask long keys (>8 chars) correctly", async () => {
-      mockGetSetting.mockImplementation((key: string) => {
-        if (key === "admin:agent_baseUrl") return "https://api.example.com/v1";
-        if (key === "admin:agent_apiKey") return "sk-abcdefghijklmnop";
+      mockGetSetting.mockImplementation((key: string, userId?: string) => {
+        // getSetting already adds userId prefix internally
+        if (key === "agent_baseUrl") return "https://api.example.com/v1";
+        if (key === "agent_apiKey") return "sk-abcdefghijklmnop";
         return null;
       });
 
@@ -209,9 +225,10 @@ describe("agent-config", () => {
     });
 
     it("should return empty keyPreview when apiKey is empty", async () => {
-      mockGetSetting.mockImplementation((key: string) => {
-        if (key === "admin:agent_baseUrl") return "https://api.example.com/v1";
-        if (key === "admin:agent_apiKey") return "";
+      mockGetSetting.mockImplementation((key: string, userId?: string) => {
+        // getSetting already adds userId prefix internally
+        if (key === "agent_baseUrl") return "https://api.example.com/v1";
+        if (key === "agent_apiKey") return "";
         return null;
       });
 

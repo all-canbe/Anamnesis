@@ -7,10 +7,13 @@ export interface AgentConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
+  embeddingModel: string;
+  zvecEnabled: boolean;
 }
 
 const DEFAULT_BASE_URL = "https://api.siliconflow.cn/v1";
 const DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct";
+const DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3";
 const ENC_PREFIX = "enc:";
 
 /** 对 API Key 加密存储，未配置 ENCRYPTION_KEY 时明文存储 */
@@ -86,11 +89,15 @@ export async function getAgentConfig(userId: string): Promise<AgentConfig> {
   const dbBaseUrl = await getSetting("agent_baseUrl", userId);
   const dbApiKey = await getSetting("agent_apiKey", userId);
   const dbModel = await getSetting("agent_model", userId);
+  const dbEmbeddingModel = await getSetting("embedding_model", userId);
+  const dbZvecEnabled = await getSetting("zvec_enabled", userId);
   if (dbApiKey && dbBaseUrl) {
     return {
       baseUrl: dbBaseUrl,
       apiKey: unpackApiKey(dbApiKey),
       model: dbModel || DEFAULT_MODEL,
+      embeddingModel: dbEmbeddingModel || DEFAULT_EMBEDDING_MODEL,
+      zvecEnabled: dbZvecEnabled === "true",
     };
   }
   // 无 DB 配置时返回默认值
@@ -98,6 +105,8 @@ export async function getAgentConfig(userId: string): Promise<AgentConfig> {
     baseUrl: DEFAULT_BASE_URL,
     apiKey: "",
     model: DEFAULT_MODEL,
+    embeddingModel: DEFAULT_EMBEDDING_MODEL,
+    zvecEnabled: false,
   };
 }
 
@@ -114,6 +123,8 @@ export async function saveAgentConfig(
     await setSetting("agent_apiKey", packApiKey(cfg.apiKey), userId);
   }
   await setSetting("agent_model", cfg.model, userId);
+  await setSetting("embedding_model", cfg.embeddingModel || DEFAULT_EMBEDDING_MODEL, userId);
+  await setSetting("zvec_enabled", cfg.zvecEnabled ? "true" : "false", userId);
 }
 
 /** 检查是否已配置（不返回完整 Key，只返回预览，供前端调用） */
@@ -122,10 +133,14 @@ export async function hasAgentConfig(userId: string): Promise<{
   baseUrl: string;
   model: string;
   keyPreview?: string;
+  embeddingModel?: string;
+  zvecEnabled?: boolean;
 }> {
   const dbApiKey = await getSetting("agent_apiKey", userId);
   const dbBaseUrl = await getSetting("agent_baseUrl", userId);
   const dbModel = await getSetting("agent_model", userId);
+  const dbEmbeddingModel = await getSetting("embedding_model", userId);
+  const dbZvecEnabled = await getSetting("zvec_enabled", userId);
   if (dbApiKey && dbBaseUrl) {
     const apiKey = unpackApiKey(dbApiKey);
     return {
@@ -133,12 +148,16 @@ export async function hasAgentConfig(userId: string): Promise<{
       baseUrl: dbBaseUrl,
       model: dbModel || DEFAULT_MODEL,
       keyPreview: apiKey ? maskKey(apiKey) : undefined,
+      embeddingModel: dbEmbeddingModel || DEFAULT_EMBEDDING_MODEL,
+      zvecEnabled: dbZvecEnabled === "true",
     };
   }
   return {
     configured: false,
     baseUrl: dbBaseUrl || DEFAULT_BASE_URL,
     model: dbModel || DEFAULT_MODEL,
+    embeddingModel: dbEmbeddingModel || DEFAULT_EMBEDDING_MODEL,
+    zvecEnabled: dbZvecEnabled === "true",
   };
 }
 

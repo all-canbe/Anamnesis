@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasAgentConfig, saveAgentConfig } from "@/lib/agent-config";
+import { resetZvecMode } from "@/lib/zvec";
 import { verifyRequestAuth, unauthorizedResponse } from "@/lib/api-auth";
 
 export async function GET(request: NextRequest) {
@@ -20,10 +21,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { baseUrl, apiKey, model } = body as {
+    const { baseUrl, apiKey, model, embeddingModel, zvecEnabled } = body as {
       baseUrl: string;
       apiKey?: string;
       model: string;
+      embeddingModel?: string;
+      zvecEnabled?: boolean;
     };
 
     if (!baseUrl) {
@@ -34,10 +37,17 @@ export async function POST(request: NextRequest) {
     }
 
     await saveAgentConfig(
-      { baseUrl, apiKey: apiKey || "", model: model || "" },
+      {
+        baseUrl,
+        apiKey: apiKey || "",
+        model: model || "",
+        embeddingModel: embeddingModel || "",
+        zvecEnabled: zvecEnabled || false,
+      },
       username,
       !apiKey,
     );
+    resetZvecMode();
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json(

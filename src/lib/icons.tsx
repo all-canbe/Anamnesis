@@ -68,6 +68,7 @@ export const PaintIcon = ic(H.PaintBrushIcon);
 export const DatabaseIcon = ic(H.CircleStackIcon);
 export const CloudIcon = ic(H.CloudIcon);
 export const SparklesIcon = ic(H.SparklesIcon);
+export const InfoIcon = ic(H.InformationCircleIcon);
 
 // ─── Category Icons (Lucide) ───
 
