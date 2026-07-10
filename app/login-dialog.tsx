@@ -42,8 +42,6 @@ export function LoginDialog({ open, onClose, onLoginSuccess }: LoginDialogProps)
   const dragging = useRef(false);
   const captchaFetched = useRef(false);
 
-  if (!open) return null;
-
   // 打开弹窗时预加载滑块验证码令牌
   useEffect(() => {
     if (!open) return;
@@ -252,6 +250,8 @@ export function LoginDialog({ open, onClose, onLoginSuccess }: LoginDialogProps)
     setCodeCountdown(0);
     resetSlider();
   }
+
+  if (!open) return null;
 
   return (
     <div className="modal-overlay" onClick={(e) => e.stopPropagation()}>
