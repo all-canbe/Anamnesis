@@ -2,9 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { RecordMeta } from "@/lib/types";
-import { CATEGORIES } from "@/lib/types";
-import { getRecord } from "@/lib/content";
-import { createRecord, updateRecord, removeRecord } from "./actions";
+import { createRecord, updateRecord, removeRecord, getRecordAction } from "./actions";
 import { mdToHtml, htmlToMd } from "@/lib/md-to-html";
 
 function wrapSelection(textarea: HTMLTextAreaElement, before: string, after: string) {
@@ -88,6 +86,14 @@ export function OrchestrationClient({ records: initialRecords }: { records: Reco
   const [records, setRecords] = useState(initialRecords);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [mode, setMode] = useState<"main" | "editor">("main");
+  const [categories, setCategories] = useState<{key: string; label: string; icon: string}[]>([]);
+
+  useEffect(() => {
+    fetch("/api/categories?mode=private")
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setCategories(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
 
   const showMain = useCallback(() => {
     setMode("main");
@@ -115,7 +121,7 @@ export function OrchestrationClient({ records: initialRecords }: { records: Reco
   }
 
   if (mode === "editor") {
-    return <EditorPage editId={editingId} onDone={showMain} />;
+    return <EditorPage editId={editingId} onDone={showMain} categories={categories} />;
   }
 
   return (
@@ -144,11 +150,11 @@ export function OrchestrationClient({ records: initialRecords }: { records: Reco
           </thead>
           <tbody>
             {records.map((r) => {
-              const cat = CATEGORIES[r.category as keyof typeof CATEGORIES] || {};
+              const cat = categories.find(c => c.key === r.category);
               return (
                 <tr key={r.id}>
                   <td className="cell-title">{r.title}</td>
-                  <td className="cell-category"><span className="category-badge">{cat.label || r.category}</span></td>
+                  <td className="cell-category"><span className="category-badge">{cat?.label || r.category}</span></td>
                   <td className="cell-date">{r.date}</td>
                   <td className="cell-format">{(r.format || "html").toUpperCase()}</td>
                   <td className="cell-actions">
@@ -165,7 +171,7 @@ export function OrchestrationClient({ records: initialRecords }: { records: Reco
   );
 }
 
-function EditorPage({ editId, onDone }: { editId: string | null; onDone: () => void }) {
+function EditorPage({ editId, onDone, categories }: { editId: string | null; onDone: () => void; categories: {key: string; label: string; icon: string}[] }) {
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("frontend");
   const [date, setDate] = useState("");
@@ -179,15 +185,17 @@ function EditorPage({ editId, onDone }: { editId: string | null; onDone: () => v
 
   useEffect(() => {
     if (isEdit && editId) {
-      const r = getRecord(editId);
-      if (r) {
-        setTitle(r.meta.title);
-        setCategory(r.meta.category);
-        setDate(r.meta.date);
-        setSummary(r.meta.summary);
-        setContent(r.content);
-        setFormat(r.meta.format);
-      }
+      (async () => {
+        const r = await getRecordAction(editId);
+        if (r) {
+          setTitle(r.meta.title);
+          setCategory(r.meta.category);
+          setDate(r.meta.date);
+          setSummary(r.meta.summary);
+          setContent(r.content);
+          setFormat(r.meta.format);
+        }
+      })();
     } else {
       const d = new Date();
       setDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
@@ -252,9 +260,8 @@ function EditorPage({ editId, onDone }: { editId: string | null; onDone: () => v
 
   if (loading) return null;
 
-  const catOptions = Object.entries(CATEGORIES)
-    .filter(([k]) => k !== "all")
-    .map(([k, v]) => `<option value="${k}" ${category === k ? "selected" : ""}>${(v as { label: string }).label}</option>`)
+  const catOptions = categories
+    .map((cat) => `<option value="${cat.key}" ${category === cat.key ? "selected" : ""}>${cat.label}</option>`)
     .join("");
 
   const previewHtml = format === "md" ? mdToHtml(content) : content;

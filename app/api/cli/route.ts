@@ -8,16 +8,9 @@ import {
   getTags,
   addTag,
   deleteTag,
+  generateId,
 } from "@/lib/content";
 import type { Category, ContentFormat, RecordMeta } from "@/lib/types";
-import {
-  commitFile,
-  deleteFile as githubDeleteFile,
-  isGithubMode,
-  triggerRedeploy,
-} from "@/lib/github-api";
-import fs from "fs";
-import path from "path";
 
 function slugify(text: string): string {
   return text
@@ -32,112 +25,14 @@ function todayStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function getContentDir(): string {
-  return path.join(process.cwd(), "content");
-}
-
-function buildFrontmatter(meta: Record<string, string>, content: string): string {
-  return `---
-${Object.entries(meta)
-  .map(([k, v]) => `${k}: "${v}"`)
-  .join("\n")}
----
-\n${content}`;
-}
-
-function relPath(absPath: string): string {
-  return path.relative(process.cwd(), absPath).replace(/\\/g, "/");
-}
-
-function buildIndex(): Record<string, string>[] {
-  const contentDir = getContentDir();
-  if (!fs.existsSync(contentDir)) return [];
-  const files = fs.readdirSync(contentDir).filter((f) => f.endsWith(".md"));
-  const index: Record<string, string>[] = files
-    .map((f) => {
-      const raw = fs.readFileSync(path.join(contentDir, f), "utf-8");
-      const match = raw.match(/^---\n([\s\S]+?)\n---/);
-      if (!match) return null;
-      const attrs: Record<string, string> = {};
-      match[1].split("\n").forEach((line) => {
-        const sep = line.indexOf(":");
-        if (sep > 0)
-          attrs[line.slice(0, sep).trim()] = line
-            .slice(sep + 1)
-            .trim()
-            .replace(/^"|"$/g, "");
-      });
-      return attrs;
-    })
-    .filter(Boolean) as Record<string, string>[];
-
-  index.sort(
-    (a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(b.id)
-  );
-  return index;
-}
-
-async function writeRecordGitHub(
-  id: string,
-  slug: string,
-  title: string,
-  date: string,
-  category: string,
-  summary: string,
-  format: string,
-  content: string
-): Promise<void> {
-  const meta = { id, slug, title, date, category, summary, format };
-  const filePath = `content/${id}-${slug}.md`;
-  const fullContent = buildFrontmatter(meta, content);
-  await commitFile(filePath, fullContent, `Add record: ${title}`);
-
-  const records = buildIndex();
-  const updated = [...records.filter((r) => r.id !== id), meta];
-  updated.sort(
-    (a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(b.id)
-  );
-  await commitFile(
-    "content/index.json",
-    JSON.stringify(updated, null, 2),
-    "Update index.json"
-  );
-  await triggerRedeploy();
-}
-
-async function deleteRecordGitHub(id: string): Promise<void> {
-  const records = buildIndex();
-  const meta = records.find((r) => r.id === id);
-  if (!meta) return;
-  await githubDeleteFile(
-    `content/${meta.id}-${meta.slug}.md`,
-    `Delete record: ${meta.title}`
-  );
-  const newIndex = records.filter((r) => r.id !== id);
-  await commitFile(
-    "content/index.json",
-    JSON.stringify(newIndex, null, 2),
-    "Update index.json"
-  );
-  await triggerRedeploy();
-}
-
-async function nextId(): Promise<string> {
-  const records = buildIndex();
-  const maxId = records.reduce((max, r) => {
-    const num = parseInt((r.id || "k0").replace("k", ""), 10);
-    return num > max ? num : max;
-  }, 0);
-  return `k${maxId + 1}`;
-}
-
 // ──── Route handler ────
 
 export async function POST(request: NextRequest) {
   try {
     const auth = request.headers.get("authorization") || "";
     const token = auth.replace(/^Bearer\s+/i, "").trim();
-    if (!token || !verifyToken(token)) {
+    const username = await verifyToken(token);
+    if (!username) {
       return NextResponse.json(
         { ok: false, error: "Invalid or expired token. Run 'kb login' first." },
         { status: 401 }
@@ -176,6 +71,7 @@ export async function POST(request: NextRequest) {
         format = "md",
         summary = "",
         content = "",
+        visibility = "private",
       } = args as Record<string, string>;
 
       if (!title || !content) {
@@ -185,17 +81,14 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const id = await nextId();
+      const id = await generateId(username);
       const slug = slugify(title);
 
-      if (isGithubMode()) {
-        await writeRecordGitHub(id, slug, title, date, category, summary, format, content);
-      } else {
-        writeRecord(
-          { id, slug, title, date, category: category as Category, summary, format: format as ContentFormat },
-          content
-        );
-      }
+      await writeRecord(
+        { id, slug, title, date, category: category as Category, summary, format: format as ContentFormat, visibility: visibility as "private" | "public" },
+        content,
+        username
+      );
 
       return NextResponse.json({ ok: true, id, slug });
     }
@@ -206,7 +99,7 @@ export async function POST(request: NextRequest) {
         category?: string;
         limit?: number;
       };
-      let records = getRecords();
+      let records = await getRecords(username);
       if (category && category !== "all") {
         records = records.filter((r: any) => r.category === category);
       }
@@ -222,7 +115,7 @@ export async function POST(request: NextRequest) {
       if (!id) {
         return NextResponse.json({ ok: false, error: "id is required" });
       }
-      const record = getRecord(id);
+      const record = await getRecord(id, username);
       if (!record) {
         return NextResponse.json({ ok: false, error: `Record '${id}' not found` });
       }
@@ -238,15 +131,13 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: false, error: "id is required" });
       }
 
-      const existing = getRecord(id);
+      const existing = await getRecord(id, username);
       if (!existing) {
         return NextResponse.json({ ok: false, error: `Record '${id}' not found` });
       }
 
       const newSlug = title ? slugify(title) : existing.meta.slug;
       const newContent = content !== undefined ? content : existing.content;
-      const oldPath = `${existing.meta.id}-${existing.meta.slug}.md`;
-      const newPath = `${id}-${newSlug}.md`;
 
       const newMeta: RecordMeta = {
         ...existing.meta,
@@ -258,26 +149,7 @@ export async function POST(request: NextRequest) {
         slug: newSlug,
       };
 
-      if (isGithubMode()) {
-        if (oldPath !== newPath) {
-          await githubDeleteFile(`content/${oldPath}`, `Remove old: ${existing.meta.title}`);
-        }
-        await writeRecordGitHub(
-          id,
-          newSlug,
-          newMeta.title,
-          newMeta.date,
-          newMeta.category,
-          newMeta.summary,
-          newMeta.format,
-          newContent
-        );
-      } else {
-        const contentDir = getContentDir();
-        const oldFullPath = path.join(contentDir, oldPath);
-        if (fs.existsSync(oldFullPath)) fs.unlinkSync(oldFullPath);
-        writeRecord(newMeta, newContent);
-      }
+      await writeRecord(newMeta, newContent, username);
 
       return NextResponse.json({ ok: true, id, slug: newSlug });
     }
@@ -288,17 +160,13 @@ export async function POST(request: NextRequest) {
       if (!id) {
         return NextResponse.json({ ok: false, error: "id is required" });
       }
-      if (isGithubMode()) {
-        await deleteRecordGitHub(id);
-      } else {
-        await deleteRecord(id);
-      }
+      await deleteRecord(id, username);
       return NextResponse.json({ ok: true, id });
     }
 
     // ── status ──
     if (command === "status") {
-      const records = getRecords() as any[];
+      const records = await getRecords(username);
       const total = records.length;
       const categories: Record<string, number> = {};
       const formats: Record<string, number> = {};
@@ -321,12 +189,12 @@ export async function POST(request: NextRequest) {
 
     // ── add-tag ──
     if (command === "add-tag") {
-      const { key, label, emoji = "📌" } = args as Record<string, string>;
+      const { key, label, icon = "ai", color = "#3b82f6" } = args as Record<string, string>;
       if (!key || !label) {
         return NextResponse.json({ ok: false, error: "key and label are required" });
       }
-      await addTag(key, label, emoji);
-      return NextResponse.json({ ok: true, key, label, emoji });
+      await addTag(key, label, icon, color, username);
+      return NextResponse.json({ ok: true, key, label, icon, color });
     }
 
     // ── delete-tag ──
@@ -335,13 +203,13 @@ export async function POST(request: NextRequest) {
       if (!key) {
         return NextResponse.json({ ok: false, error: "key is required" });
       }
-      await deleteTag(key);
+      await deleteTag(key, username);
       return NextResponse.json({ ok: true, key });
     }
 
     // ── tags ──
     if (command === "tags") {
-      const tags = getTags();
+      const tags = await getTags();
       return NextResponse.json({ ok: true, tags });
     }
 
