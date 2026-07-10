@@ -4,8 +4,14 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/language-context";
 import { UploadFolderDialog } from "./upload-folder-dialog";
-import { CATEGORIES } from "@/lib/types";
 import { MenuIcon, FolderIcon, PlusIcon, ChevronLeftIcon, SearchIcon } from "@/lib/icons";
+
+interface CategoryInfo {
+  key: string;
+  label: string;
+  label_en: string;
+  icon: string;
+}
 
 interface TagInfo {
   key: string;
@@ -23,10 +29,11 @@ interface LeftPanelProps {
 }
 
 export function LeftPanel({ open, listMode, viewMode, onViewModeChange, onClose }: LeftPanelProps) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const router = useRouter();
   const [showUpload, setShowUpload] = useState(false);
   const [activeCategory, setActiveCategory] = useState("all");
+  const [categories, setCategories] = useState<CategoryInfo[]>([]);
   const [tags, setTags] = useState<TagInfo[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
 
@@ -40,6 +47,10 @@ export function LeftPanel({ open, listMode, viewMode, onViewModeChange, onClose 
       .then(res => res.ok ? res.json() : {})
       .then(data => setCounts(data || {}))
       .catch(() => {});
+    fetch(`/api/categories?mode=${listMode}`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setCategories(Array.isArray(data) ? data : []))
+      .catch(() => {});
   }, [open, listMode]);
 
   function handleCategoryClick(key: string) {
@@ -48,7 +59,14 @@ export function LeftPanel({ open, listMode, viewMode, onViewModeChange, onClose 
     router.push(`/?category=${key}${modeParam}`);
   }
 
-  const categoryKeys = ["all", ...Object.keys(CATEGORIES)];
+  function getCategoryLabel(key: string): string {
+    if (key === "all") return t("all");
+    const cat = categories.find(c => c.key === key);
+    if (!cat) return key;
+    return (listMode === "public" && cat.label_en && lang === "en") ? cat.label_en : cat.label;
+  }
+
+  const categoryKeys = ["all", ...categories.map(c => c.key)];
   const totalCount = Object.values(counts).reduce((a, b) => a + b, 0);
 
   return (
@@ -68,7 +86,7 @@ export function LeftPanel({ open, listMode, viewMode, onViewModeChange, onClose 
           <div className="left-panel-tree">
             {categoryKeys.map(key => {
               const isActive = activeCategory === key;
-              const label = key === "all" ? t("all") : t(`category.${key}`);
+              const label = getCategoryLabel(key);
               const count = key === "all" ? totalCount : (counts[key] || 0);
               return (
                 <div

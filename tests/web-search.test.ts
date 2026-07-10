@@ -158,13 +158,9 @@ describe("web-search", () => {
 
   describe("searchSkills", () => {
     it("should merge web and GitHub results", async () => {
-      // Mock two fetch calls: one for Jina, one for GitHub
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce(
-          new Response("Title: Web Result\nhttps://example.com/web\nSnippet", { status: 200 })
-        )
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({
+      global.fetch = vi.fn().mockImplementation(async (url: string) => {
+        if (url.includes("api.github.com")) {
+          return new Response(JSON.stringify({
             items: [
               {
                 full_name: "user/skill",
@@ -172,8 +168,13 @@ describe("web-search", () => {
                 description: "A skill",
               },
             ],
-          }), { status: 200 })
-        ) as any;
+          }), { status: 200 });
+        }
+        return new Response(
+          "Title: Web Result\nhttps://example.com/web\nSnippet",
+          { status: 200 }
+        );
+      }) as any;
 
       const { searchSkills } = await import("@/lib/web-search");
       const results = await searchSkills("react skill", 5);
@@ -186,12 +187,9 @@ describe("web-search", () => {
     });
 
     it("should deduplicate results by URL", async () => {
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce(
-          new Response("Result\nhttps://same-url.com\nSnippet", { status: 200 })
-        )
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({
+      global.fetch = vi.fn().mockImplementation(async (url: string) => {
+        if (url.includes("api.github.com")) {
+          return new Response(JSON.stringify({
             items: [
               {
                 full_name: "user/repo",
@@ -199,8 +197,13 @@ describe("web-search", () => {
                 description: "Same URL",
               },
             ],
-          }), { status: 200 })
-        ) as any;
+          }), { status: 200 });
+        }
+        return new Response(
+          "Result\nhttps://same-url.com\nSnippet",
+          { status: 200 }
+        );
+      }) as any;
 
       const { searchSkills } = await import("@/lib/web-search");
       const results = await searchSkills("test");
@@ -211,24 +214,23 @@ describe("web-search", () => {
     });
 
     it("should respect the limit parameter", async () => {
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce(
-          new Response(
-            Array.from({ length: 10 }, (_, i) =>
-              `Result ${i}\nhttps://example.com/${i}\nSnippet`
-            ).join("\n"),
-            { status: 200 }
-          )
-        )
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({
+      global.fetch = vi.fn().mockImplementation(async (url: string) => {
+        if (url.includes("api.github.com")) {
+          return new Response(JSON.stringify({
             items: Array.from({ length: 10 }, (_, i) => ({
               full_name: `user/repo${i}`,
               html_url: `https://github.com/user/repo${i}`,
               description: `Repo ${i}`,
             })),
-          }), { status: 200 })
-        ) as any;
+          }), { status: 200 });
+        }
+        return new Response(
+          Array.from({ length: 10 }, (_, i) =>
+            `Result ${i}\nhttps://example.com/${i}\nSnippet`
+          ).join("\n"),
+          { status: 200 }
+        );
+      }) as any;
 
       const { searchSkills } = await import("@/lib/web-search");
       const results = await searchSkills("test", 3);

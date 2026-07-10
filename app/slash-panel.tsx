@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useMemo } from "react";
 import { type SlashCommand, filterCommands } from "@/lib/slash-commands";
+import { useLanguage } from "@/lib/language-context";
 
 interface Props {
   filterText: string;
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function SlashCommandPanel({ filterText, selectedIndex, onSelect, anchorRef }: Props) {
+  const { t } = useLanguage();
   const panelRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLDivElement>(null);
 
@@ -53,7 +55,7 @@ export function SlashCommandPanel({ filterText, selectedIndex, onSelect, anchorR
   if (isEmpty) {
     return (
       <div ref={panelRef} className="slash-panel">
-        <div className="slash-panel-empty">No matching commands</div>
+        <div className="slash-panel-empty">{t("slashNoCommands")}</div>
       </div>
     );
   }
@@ -62,7 +64,7 @@ export function SlashCommandPanel({ filterText, selectedIndex, onSelect, anchorR
     <div ref={panelRef} className="slash-panel">
       {showCommands && commands.length > 0 && (
         <>
-          <div className="slash-panel-group">Commands</div>
+          <div className="slash-panel-group">{t("slashCommands")}</div>
           {commands.map((cmd) => {
             const idx = getItemIndex(cmd);
             return (
@@ -85,7 +87,7 @@ export function SlashCommandPanel({ filterText, selectedIndex, onSelect, anchorR
 
       {showSkills && skills.length > 0 && (
         <>
-          <div className="slash-panel-group">Skills</div>
+          <div className="slash-panel-group">{t("slashSkills")}</div>
           {skills.map((cmd) => {
             const idx = getItemIndex(cmd);
             return (

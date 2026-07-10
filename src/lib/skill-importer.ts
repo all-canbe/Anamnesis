@@ -1,6 +1,7 @@
 import { writeRecord, generateId } from "@/lib/content";
 import { slugify } from "@/lib/utils";
 import type { RecordMeta, Category, ContentFormat, Attachment } from "@/lib/types";
+import { addToIndex } from "./zvec";
 
 export interface SkillPackage {
   name: string;
@@ -133,6 +134,7 @@ export async function importSkill(skill: SkillPackage, userId?: string, visibili
     };
 
     await writeRecord(meta, content, userId);
+    addToIndex(id, userId).catch(() => {});
     return {
       ok: true,
       skillId: id,

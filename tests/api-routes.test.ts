@@ -30,10 +30,15 @@ vi.mock("@/lib/auth", () => ({
     if (token === "valid-token") return true;
     return false;
   }),
-  validateCredentials: vi.fn(async (username: string, password: string) => {
-    return username === "admin" && password === "kb65";
+  validateEmailLogin: vi.fn(async (email: string, password: string) => {
+    return null; // 非 admin 邮箱用户
+  }),
+  validateAdminLogin: vi.fn(async (username: string, password: string) => {
+    return username === "admin" && password === "admin710";
   }),
   createToken: vi.fn(async () => "test-jwt-token-xyz"),
+  hashPassword: vi.fn(async (p: string) => `hashed:${p}`),
+  validateAuthEnv: vi.fn(() => {}),
 }));
 
 vi.mock("@/lib/content", () => ({
@@ -189,8 +194,9 @@ describe("API Routes", () => {
     it("should return token for valid credentials", async () => {
       const { POST } = await import("../app/api/auth/login/route");
       const req = createRequest("POST", "http://localhost/api/auth/login", {
-        username: "admin",
-        password: "kb65",
+        email: "admin",
+        password: "admin710",
+        captchaToken: "test",
       });
 
       const res = await POST(req as any);
@@ -203,8 +209,9 @@ describe("API Routes", () => {
     it("should return 401 for invalid credentials", async () => {
       const { POST } = await import("../app/api/auth/login/route");
       const req = createRequest("POST", "http://localhost/api/auth/login", {
-        username: "admin",
+        email: "admin",
         password: "wrong",
+        captchaToken: "test",
       });
 
       const res = await POST(req as any);
@@ -214,10 +221,11 @@ describe("API Routes", () => {
       expect(json.ok).toBe(false);
     });
 
-    it("should return 400 when username is missing", async () => {
+    it("should return 400 when email is missing", async () => {
       const { POST } = await import("../app/api/auth/login/route");
       const req = createRequest("POST", "http://localhost/api/auth/login", {
-        password: "kb65",
+        password: "admin710",
+        captchaToken: "test",
       });
 
       const res = await POST(req as any);
@@ -229,7 +237,8 @@ describe("API Routes", () => {
     it("should return 400 when password is missing", async () => {
       const { POST } = await import("../app/api/auth/login/route");
       const req = createRequest("POST", "http://localhost/api/auth/login", {
-        username: "admin",
+        email: "admin",
+        captchaToken: "test",
       });
 
       const res = await POST(req as any);
@@ -241,8 +250,9 @@ describe("API Routes", () => {
     it("should set cookie on successful login", async () => {
       const { POST } = await import("../app/api/auth/login/route");
       const req = createRequest("POST", "http://localhost/api/auth/login", {
-        username: "admin",
-        password: "kb65",
+        email: "admin",
+        password: "admin710",
+        captchaToken: "test",
       });
 
       const res = await POST(req as any);

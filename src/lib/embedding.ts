@@ -1,14 +1,36 @@
 const EMBEDDING_API = (process.env.LLM_BASE_URL || "https://api.siliconflow.cn/v1").replace(/\/+$/, "");
 let _embeddingModel = process.env.EMBEDDING_MODEL || "BAAI/bge-m3";
+let _apiKey = process.env.LLM_API_KEY || "";
+let _embeddingBaseUrl = process.env.LLM_BASE_URL || "https://api.siliconflow.cn/v1";
+
+/** 运行时设置 embedding 基础 URL（如从 agent config 读取） */
+export function setEmbeddingBaseUrl(url: string): void {
+  if (url) _embeddingBaseUrl = url.replace(/\/+$/, "");
+}
 
 /** 运行时设置 embedding 模型（如从 agent config 读取） */
 export function setEmbeddingModel(model: string): void {
   if (model) _embeddingModel = model;
 }
 
+/** 运行时设置 API Key（如从 agent config 读取） */
+export function setApiKey(key: string): void {
+  if (key !== undefined) _apiKey = key;
+}
+
+/** 获取当前 embedding 基础 URL */
+export function getEmbeddingBaseUrl(): string {
+  return _embeddingBaseUrl;
+}
+
 /** 获取当前 embedding 模型 */
 export function getEmbeddingModel(): string {
   return _embeddingModel;
+}
+
+/** 获取当前 API Key */
+export function getApiKey(): string {
+  return _apiKey;
 }
 
 export interface EmbeddingResult {
@@ -17,13 +39,13 @@ export interface EmbeddingResult {
 }
 
 export async function embedText(text: string): Promise<EmbeddingResult> {
-  const apiKey = process.env.LLM_API_KEY || "";
+  const apiKey = getApiKey();
   if (!apiKey) {
     return simpleEmbed(text);
   }
 
   try {
-    const res = await fetch(`${EMBEDDING_API}/embeddings`, {
+    const res = await fetch(`${getEmbeddingBaseUrl()}/embeddings`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -49,13 +71,13 @@ export async function embedText(text: string): Promise<EmbeddingResult> {
 }
 
 export async function embedBatch(texts: string[]): Promise<EmbeddingResult[]> {
-  const apiKey = process.env.LLM_API_KEY || "";
+  const apiKey = getApiKey();
   if (!apiKey || texts.length === 0) {
     return texts.map((t) => simpleEmbed(t));
   }
 
   try {
-    const res = await fetch(`${EMBEDDING_API}/embeddings`, {
+    const res = await fetch(`${getEmbeddingBaseUrl()}/embeddings`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

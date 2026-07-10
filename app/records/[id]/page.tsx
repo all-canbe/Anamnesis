@@ -1,6 +1,6 @@
-import { getRecord, getFilteredRecords } from "@/lib/content";
+import { getRecord, getFilteredRecords, getCategories } from "@/lib/content";
 import { findSimilar } from "@/lib/zvec";
-import { CATEGORIES, THUMB_COLORS } from "@/lib/types";
+import { THUMB_COLORS } from "@/lib/types";
 import { mdToHtml } from "@/lib/md-to-html";
 import { notFound } from "next/navigation";
 import type { RecordMeta } from "@/lib/types";
@@ -27,16 +27,24 @@ export default async function RecordDetailPage({ params }: { params: Promise<{ i
   const record = await getRecord(id, username || undefined);
   if (!record) notFound();
 
-  const isOwner = !!(username && record.meta.visibility === "private") || true; // 私有文档需要主人
-  const cat = CATEGORIES[record.meta.category as keyof typeof CATEGORIES] || {};
-  const allRecords = await getFilteredRecords(undefined, username || undefined);
+  // 权限隔离：未登录用户只能看公开记录
+  if (!username && record.meta.visibility !== "public") {
+    notFound();
+  }
+
+  const categories = await getCategories(username || undefined);
+  const catInfo = categories.find(c => c.key === record.meta.category);
+  // 未登录用户只看公开记录列表，登录用户看自己的记录
+  const allRecords = username
+    ? await getFilteredRecords(undefined, username)
+    : await getFilteredRecords(undefined, undefined, "public");
   const idx = allRecords.findIndex((r: RecordMeta) => r.id === id);
   const prev = idx > 0 ? allRecords[idx - 1] : null;
   const next = idx < allRecords.length - 1 ? allRecords[idx + 1] : null;
 
   const contentHtml = record.meta.format === "md" ? mdToHtml(record.content) : record.content;
 
-  const colorIdx = Object.keys(CATEGORIES).indexOf(record.meta.category);
+  const colorIdx = categories.findIndex(c => c.key === record.meta.category);
   const color = THUMB_COLORS[colorIdx >= 0 ? colorIdx : 0];
 
   const similarResults = await findSimilar(id, username || undefined, 3);
@@ -54,7 +62,7 @@ export default async function RecordDetailPage({ params }: { params: Promise<{ i
       </a>
       <div className="detail-meta">
         <span className="detail-date">{record.meta.date}</span>
-        <a href={`/?category=${record.meta.category}`} className="category-badge">{cat.label || record.meta.category}</a>
+        <a href={`/?category=${record.meta.category}`} className="category-badge">{catInfo?.label || record.meta.category}</a>
         <span className="format-badge">{record.meta.format === "md" ? "MD" : "HTML"}</span>
         <span className={`visibility-badge ${record.meta.visibility}`}>{record.meta.visibility === "public" ? "Public" : "Private"}</span>
       </div>
@@ -85,6 +93,7 @@ export default async function RecordDetailPage({ params }: { params: Promise<{ i
         similar={similar}
         contentHtml={contentHtml}
         category={record.meta.category}
+        categories={categories}
       />
     </div>
   );

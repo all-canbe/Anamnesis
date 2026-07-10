@@ -1,5 +1,6 @@
 "use client";
 
+import { useLanguage } from "@/lib/language-context";
 import { MenuIcon, FolderIcon, DownloadIcon, SettingsIcon, UserIcon, GlobeIcon } from "@/lib/icons";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -18,6 +19,7 @@ interface NavBarProps {
 }
 
 export function NavBar({ activeMode, listMode, onModeChange, onListModeChange, onOpenLeftPanel, onOpenSettings, onOpenImport, username, onOpenLogin, onLogout }: NavBarProps) {
+  const { t } = useLanguage();
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const router = useRouter();
 
@@ -38,21 +40,22 @@ export function NavBar({ activeMode, listMode, onModeChange, onListModeChange, o
     <nav className="nav-bar">
       <div className="nav-bar-items">
         <button
-          className={`nav-bar-btn${listMode === "private" ? " active" : ""}`}
-          onClick={() => handleListModeChange("private")}
-          title="Private list"
+          className={`nav-bar-btn${listMode === "private" ? " active" : ""}${!username ? " disabled" : ""}`}
+          onClick={() => username ? handleListModeChange("private") : undefined}
+          title={username ? t("navPrivateList") : t("loginRequired")}
+          disabled={!username}
         >
           <MenuIcon size={16} />
-          <span className="nav-bar-tooltip">Private</span>
+          <span className="nav-bar-tooltip">{username ? t("navPrivateList") : t("loginRequired")}</span>
         </button>
 
         <button
           className={`nav-bar-btn${listMode === "public" ? " active" : ""}`}
           onClick={() => handleListModeChange("public")}
-          title="Public list"
+          title={t("navPublicList")}
         >
           <GlobeIcon size={16} />
-          <span className="nav-bar-tooltip">Public</span>
+          <span className="nav-bar-tooltip">{t("navPublicList")}</span>
         </button>
 
         <div className="nav-bar-divider" />
@@ -60,19 +63,20 @@ export function NavBar({ activeMode, listMode, onModeChange, onListModeChange, o
         <button
           className="nav-bar-btn"
           onClick={onOpenLeftPanel}
-          title="Files / Skills"
+          title={t("navFilesSkills")}
         >
           <FolderIcon size={16} />
-          <span className="nav-bar-tooltip">Files</span>
+          <span className="nav-bar-tooltip">{t("navFilesSkills")}</span>
         </button>
 
         <button
-          className="nav-bar-btn"
-          onClick={onOpenImport}
-          title="Import Article"
+          className={`nav-bar-btn${!username ? " disabled" : ""}`}
+          onClick={() => username ? onOpenImport() : undefined}
+          title={username ? t("navImportArticle") : t("loginRequired")}
+          disabled={!username}
         >
           <DownloadIcon size={16} />
-          <span className="nav-bar-tooltip">Import</span>
+          <span className="nav-bar-tooltip">{username ? t("navImportArticle") : t("loginRequired")}</span>
         </button>
       </div>
 
@@ -82,10 +86,10 @@ export function NavBar({ activeMode, listMode, onModeChange, onListModeChange, o
           <button
             className="nav-bar-btn"
             onClick={onOpenLogin}
-            title="Login"
+            title={t("navLogin")}
           >
             <UserIcon size={16} />
-            <span className="nav-bar-tooltip">Login</span>
+            <span className="nav-bar-tooltip">{t("navLogin")}</span>
           </button>
         ) : (
           <div className="nav-bar-avatar-container">
@@ -105,20 +109,20 @@ export function NavBar({ activeMode, listMode, onModeChange, onListModeChange, o
                     onLogout();
                   }}
                 >
-                  Logout
+                  {t("navLogout")}
                 </button>
               </div>
             )}
           </div>
         )}
         <button
-          className="nav-bar-btn"
-          onClick={onOpenSettings}
-          title="Settings"
-        >
-          <SettingsIcon size={16} />
-          <span className="nav-bar-tooltip">Settings</span>
-        </button>
+            className="nav-bar-btn"
+            onClick={onOpenSettings}
+            title={t("navSettings")}
+          >
+            <SettingsIcon size={16} />
+            <span className="nav-bar-tooltip">{t("navSettings")}</span>
+          </button>
       </div>
     </nav>
   );

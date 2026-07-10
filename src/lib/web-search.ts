@@ -5,9 +5,86 @@ export interface SearchResult {
   source: "web" | "github";
 }
 
-export async function searchWeb(query: string, limit = 5): Promise<SearchResult[]> {
-  const results: SearchResult[] = [];
+function getEnv(key: string): string {
+  return (typeof process !== "undefined" ? process.env[key] : "") || "";
+}
 
+// ─── 多级搜索 fallback ───
+
+async function tryTavily(query: string, limit: number): Promise<SearchResult[]> {
+  const apiKey = getEnv("TAVILY_API_KEY");
+  if (!apiKey || apiKey === "${TAVILY_API_KEY}") return [];
+  try {
+    const resp = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: apiKey, query, search_depth: "basic", max_results: limit }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    const raw = data.results || [];
+    return raw.slice(0, limit).map((r: any) => ({
+      title: r.title || "",
+      url: r.url || "",
+      snippet: r.content || "",
+      source: "web" as const,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function trySerper(query: string, limit: number): Promise<SearchResult[]> {
+  const apiKey = getEnv("SERPER_API_KEY");
+  if (!apiKey || apiKey === "${SERPER_API_KEY}") return [];
+  try {
+    const resp = await fetch("https://google.serper.dev/search", {
+      method: "POST",
+      headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ q: query, num: limit }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    const organic = data.organic || [];
+    return organic.slice(0, limit).map((r: any) => ({
+      title: r.title || "",
+      url: r.link || "",
+      snippet: r.snippet || "",
+      source: "web" as const,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function tryBocha(query: string, limit: number): Promise<SearchResult[]> {
+  const apiKey = getEnv("BOCHA_API_KEY");
+  if (!apiKey || apiKey === "${BOCHA_API_KEY}") return [];
+  try {
+    const resp = await fetch("https://api.bochaai.com/v1/web-search", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query, count: limit }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    const webPages = data.data?.webPages?.value || data.results || data.value || [];
+    return webPages.slice(0, limit).map((r: any) => ({
+      title: r.name || r.title || "",
+      url: r.url || r.href || "",
+      snippet: r.snippet || r.summary || r.body || "",
+      source: "web" as const,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function tryJinaSearch(query: string, limit: number): Promise<SearchResult[]> {
+  const results: SearchResult[] = [];
   try {
     const res = await fetch(
       `https://s.jina.ai/${encodeURIComponent(query)}`,
@@ -29,8 +106,20 @@ export async function searchWeb(query: string, limit = 5): Promise<SearchResult[
       }
     }
   } catch {}
-
   return results.slice(0, limit);
+}
+
+export async function searchWeb(query: string, limit = 5): Promise<SearchResult[]> {
+  const results = await tryTavily(query, limit);
+  if (results.length > 0) return results;
+
+  const results2 = await trySerper(query, limit);
+  if (results2.length > 0) return results2;
+
+  const results3 = await tryBocha(query, limit);
+  if (results3.length > 0) return results3;
+
+  return tryJinaSearch(query, limit);
 }
 
 export async function searchGitHub(query: string, limit = 5): Promise<SearchResult[]> {

@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { CATEGORIES } from "@/lib/types";
+import { useState, useEffect } from "react";
 import { fetchArticle, fetchRSSFeed, type ImportedArticle, type RSSFeedItem } from "@/lib/article-importer";
 import { importArticleAction } from "./actions/import-article";
 import {
@@ -17,6 +16,7 @@ import {
   SearchIcon,
   AttachmentIcon,
 } from "@/lib/icons";
+import { useLanguage } from "@/lib/language-context";
 
 interface ImportResult {
   title: string;
@@ -25,6 +25,7 @@ interface ImportResult {
 }
 
 export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useLanguage();
   const [mode, setMode] = useState<"url" | "rss">("url");
   const [urlInput, setUrlInput] = useState("");
   const [rssInput, setRssInput] = useState("");
@@ -35,6 +36,15 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
   const [importing, setImporting] = useState(false);
   const [results, setResults] = useState<ImportResult[]>([]);
   const [step, setStep] = useState<"input" | "preview" | "done">("input");
+  const [categories, setCategories] = useState<{key: string; label: string}[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/categories?mode=private")
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setCategories(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [open]);
 
   async function handleFetch() {
     if (mode === "url" && !urlInput.trim()) return;
@@ -119,7 +129,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="import-dialog">
         <div className="import-dialog-header">
-          <h3>Import Article</h3>
+          <h3>{t("importTitle")}</h3>
           <button className="modal-close icon-btn" onClick={onClose}>
             <CloseIcon size={16} />
           </button>
@@ -132,19 +142,19 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
                 className={`import-mode-tab${mode === "url" ? " active" : ""}`}
                 onClick={() => setMode("url")}
               >
-                <GlobeIcon size={14} /> URL
+                <GlobeIcon size={14} /> {t("importUrlTab")}
               </button>
               <button
                 className={`import-mode-tab${mode === "rss" ? " active" : ""}`}
                 onClick={() => setMode("rss")}
               >
-                <RSSIcon size={14} /> RSS Feed
+                <RSSIcon size={14} /> {t("importRssTab")}
               </button>
             </div>
 
             {mode === "url" ? (
               <div className="import-input-area">
-                <p className="import-desc">Enter a URL to fetch and import as a knowledge record.</p>
+                <p className="import-desc">{t("importUrlDesc")}</p>
                 <input
                   className="import-input"
                   type="url"
@@ -154,19 +164,19 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
                   onKeyDown={(e) => e.key === "Enter" && handleFetch()}
                 />
                 <div className="import-actions">
-                  <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+                  <button className="btn btn-secondary" onClick={onClose}>{t("cancel")}</button>
                   <button
                     className="btn btn-primary"
                     onClick={handleFetch}
                     disabled={fetching || !urlInput.trim()}
                   >
-                    {fetching ? <><LoaderIcon size={14} /> Fetching...</> : <><SearchIcon size={14} /> Fetch & Preview</>}
+                    {fetching ? <><LoaderIcon size={14} /> {t("importFetching")}</> : <><SearchIcon size={14} /> {t("importFetchPreview")}</>}
                   </button>
                 </div>
               </div>
             ) : (
               <div className="import-input-area">
-                <p className="import-desc">Enter an RSS feed URL to browse and select articles.</p>
+                <p className="import-desc">{t("importRssDesc")}</p>
                 <input
                   className="import-input"
                   type="url"
@@ -176,13 +186,13 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
                   onKeyDown={(e) => e.key === "Enter" && handleFetch()}
                 />
                 <div className="import-actions">
-                  <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+                  <button className="btn btn-secondary" onClick={onClose}>{t("cancel")}</button>
                   <button
                     className="btn btn-primary"
                     onClick={handleFetch}
                     disabled={fetching || !rssInput.trim()}
                   >
-                    {fetching ? <><LoaderIcon size={14} /> Fetching...</> : <><SearchIcon size={14} /> Browse Feed</>}
+                    {fetching ? <><LoaderIcon size={14} /> {t("importFetching")}</> : <><SearchIcon size={14} /> {t("importBrowseFeed")}</>}
                   </button>
                 </div>
               </div>
@@ -194,35 +204,36 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
           <div className="import-body">
             <div className="import-preview">
               <div className="import-preview-header">
-                <span className="import-preview-label">Preview</span>
+                <span className="import-preview-label">{t("importPreview")}</span>
                 <span className="import-preview-badge">{article.category}</span>
               </div>
               <h4 className="import-preview-title">{article.title}</h4>
               <p className="import-preview-summary">{article.summary}</p>
               {article.images.length > 0 && (
                 <p className="import-preview-images">
-                  <AttachmentIcon size={12} /> {article.images.length} images
+                  <AttachmentIcon size={12} /> {article.images.length} {t("importImages")}
                 </p>
               )}
               <div className="import-preview-category">
-                <label className="import-preview-cat-label">Category:</label>
+                <label className="import-preview-cat-label">{t("importCategory")}:</label>
                 <select
                   className="import-preview-cat-select"
                   value={article.category}
                   onChange={(e) => setArticle({ ...article, category: e.target.value })}
                 >
-                  {Object.entries(CATEGORIES).map(([key, cat]) => (
-                    <option key={key} value={key}>{cat.label}</option>
+                  {categories.map(cat => (
+                    <option key={cat.key} value={cat.key}>{cat.label}</option>
                   ))}
                 </select>
               </div>
+              <p className="import-private-hint">{t("importPrivateHint")}</p>
             </div>
             <div className="import-actions">
               <button className="btn btn-secondary" onClick={() => setStep("input")}>
-                <ArrowLeftIcon size={14} /> Back
+                <ArrowLeftIcon size={14} /> {t("importBack")}
               </button>
               <button className="btn btn-primary" onClick={handleImport} disabled={importing}>
-                {importing ? <><LoaderIcon size={14} /> Importing...</> : <><CheckIcon size={14} /> Import</>}
+                {importing ? <><LoaderIcon size={14} /> {t("importImporting")}</> : <><CheckIcon size={14} /> {t("importImport")}</>}
               </button>
             </div>
           </div>
@@ -231,9 +242,9 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
         {step === "preview" && mode === "rss" && (
           <div className="import-body">
             <div className="import-rss-toolbar">
-              <span className="import-rss-count">{rssItems.length} articles</span>
+              <span className="import-rss-count">{rssItems.length} {t("importArticles")}</span>
               <button className="import-rss-select-all" onClick={selectAllRss}>
-                Select All
+                {t("importSelectAll")}
               </button>
             </div>
             <div className="import-rss-list">
@@ -251,16 +262,17 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
                 </label>
               ))}
             </div>
+            <p className="import-private-hint" style={{ marginTop: 12 }}>{t("importPrivateHint")}</p>
             <div className="import-actions">
               <button className="btn btn-secondary" onClick={() => setStep("input")}>
-                <ArrowLeftIcon size={14} /> Back
+                <ArrowLeftIcon size={14} /> {t("importBack")}
               </button>
               <button
                 className="btn btn-primary"
                 onClick={handleImport}
                 disabled={importing || selectedRss.size === 0}
               >
-                {importing ? <><LoaderIcon size={14} /> Importing...</> : <><CheckIcon size={14} /> Import ({selectedRss.size})</>}
+                {importing ? <><LoaderIcon size={14} /> {t("importImporting")}</> : <><CheckIcon size={14} /> {t("importImport")} ({selectedRss.size})</>}
               </button>
             </div>
           </div>
@@ -273,7 +285,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
                 {errorCount === 0 ? <SuccessIcon size={48} /> : okCount > 0 ? <WarningIcon size={48} /> : <ErrorIcon size={48} />}
               </div>
               <p className="import-done-text">
-                {okCount} succeeded{errorCount > 0 ? `, ${errorCount} failed` : ""}
+                {okCount} {t("importSucceeded")}{errorCount > 0 ? `, ${errorCount} ${t("importFailed")}` : ""}
               </p>
               {results.filter((r) => r.status === "error").length > 0 && (
                 <div className="import-done-errors">
@@ -285,7 +297,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
             </div>
             <div className="import-actions">
               <button className="btn btn-primary" onClick={onClose}>
-                <CheckIcon size={14} /> Close
+                <CheckIcon size={14} /> {t("close")}
               </button>
             </div>
           </div>

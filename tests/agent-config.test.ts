@@ -110,6 +110,8 @@ describe("agent-config", () => {
         baseUrl: "https://api.test.com/v1",
         apiKey: "sk-save-test",
         model: "save-model",
+        embeddingBaseUrl: "https://api.test.com/v1",
+        embeddingApiKey: "",
         embeddingModel: "BAAI/bge-m3",
         zvecEnabled: false,
       }, TEST_USER);
@@ -123,7 +125,7 @@ describe("agent-config", () => {
 
       const { saveAgentConfig } = await import("@/lib/agent-config");
       await saveAgentConfig(
-        { baseUrl: "https://api.test.com/v1", apiKey: "sk-secret", model: "m", embeddingModel: "BAAI/bge-m3", zvecEnabled: false },
+        { baseUrl: "https://api.test.com/v1", apiKey: "sk-secret", model: "m", embeddingBaseUrl: "https://api.test.com/v1", embeddingApiKey: "", embeddingModel: "BAAI/bge-m3", zvecEnabled: false },
         TEST_USER,
         true,
       );
@@ -140,6 +142,8 @@ describe("agent-config", () => {
         baseUrl: "https://fallback.test.com/v1",
         apiKey: "sk-fallback",
         model: "fallback-model",
+        embeddingBaseUrl: "https://fallback.test.com/v1",
+        embeddingApiKey: "",
         embeddingModel: "BAAI/bge-m3",
         zvecEnabled: false,
       }, TEST_USER)).rejects.toThrow("DB write error");
@@ -155,6 +159,8 @@ describe("agent-config", () => {
         baseUrl: "https://api.test.com/v1",
         apiKey: "sk-secret-key",
         model: "m",
+        embeddingBaseUrl: "https://api.test.com/v1",
+        embeddingApiKey: "",
         embeddingModel: "BAAI/bge-m3",
         zvecEnabled: false,
       }, TEST_USER);

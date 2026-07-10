@@ -335,6 +335,9 @@ export interface ChatSession {
 const STORAGE_KEY = "zhiyi-chat-sessions";
 const MAX_SESSIONS = 20;
 
+// 单调递增版本号，防止多标签页间的 localStorage 旧数据覆盖新数据
+let _version = 0;
+
 function generateId(): string {
   return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 }
@@ -343,7 +346,16 @@ export function loadSessions(): ChatSession[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // 兼容旧格式：旧版是数组，新版是 { _version, sessions }
+      if (Array.isArray(parsed)) {
+        _version = 0;
+        return parsed;
+      }
+      _version = parsed._version || 0;
+      return parsed.sessions || [];
+    }
   } catch {}
   return [];
 }
@@ -351,11 +363,22 @@ export function loadSessions(): ChatSession[] {
 export function saveSessions(sessions: ChatSession[]): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions.slice(0, MAX_SESSIONS)));
+    // 检查版本号：如果 localStorage 已有更新的数据，跳过本次写入
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed) && (parsed._version || 0) > _version) {
+        return; // 其他标签页已写入更新版本，放弃本次写入
+      }
+    }
+    _version++;
+    const data = { _version, sessions: sessions.slice(0, MAX_SESSIONS) };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch {
     try {
       const trimmed = sessions.slice(-5).map((s) => ({ ...s, messages: s.messages.slice(-4) }));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+      const data = { _version, sessions: trimmed };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch {}
   }
 }
@@ -377,6 +400,11 @@ export function deleteSession(sessions: ChatSession[], id: string): ChatSession[
 export function addMessage(sessions: ChatSession[], sessionId: string, message: ChatMessage): ChatSession[] {
   return sessions.map((s) => {
     if (s.id !== sessionId) return s;
+    // 跳过连续重复消息（同角色、同内容）— 防御性去重
+    const lastMsg = s.messages[s.messages.length - 1];
+    if (lastMsg && lastMsg.role === message.role && lastMsg.content === message.content) {
+      return s;
+    }
     const messages = [...s.messages, { ...message, timestamp: Date.now() }];
     const title = s.messages.length === 0 && message.role === "user"
       ? message.content.slice(0, 30) + (message.content.length > 30 ? "..." : "")

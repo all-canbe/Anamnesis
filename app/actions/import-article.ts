@@ -5,6 +5,7 @@ import type { RecordMeta, Category, ContentFormat } from "@/lib/types";
 import type { ImportedArticle } from "@/lib/article-importer";
 import { cookies } from "next/headers";
 import { jwtVerify } from "jose";
+import { revalidatePath } from "next/cache";
 
 async function requireAuth(): Promise<string> {
   const cookieStore = await cookies();
@@ -50,6 +51,7 @@ export async function importArticleAction(
     };
 
     await writeRecord(meta, article.content, username);
+    revalidatePath("/");
     return { ok: true };
   } catch (err: any) {
     return { ok: false, error: err.message };

@@ -23,6 +23,10 @@ const mockTursoDeleteRecord = vi.fn(async (id: string) => {
 const mockTursoGetTags = vi.fn();
 const mockTursoAddTag = vi.fn();
 const mockTursoDeleteTag = vi.fn();
+const mockTursoGetPublicRecords = vi.fn(async () => [...storedRecords]);
+const mockTursoGetCategories = vi.fn();
+const mockTursoAddCategory = vi.fn();
+const mockTursoDeleteCategory = vi.fn();
 const mockInitTursoSchema = vi.fn();
 
 vi.mock("@/lib/turso", () => ({
@@ -34,6 +38,10 @@ vi.mock("@/lib/turso", () => ({
   tursoGetTags: mockTursoGetTags,
   tursoAddTag: mockTursoAddTag,
   tursoDeleteTag: mockTursoDeleteTag,
+  tursoGetPublicRecords: mockTursoGetPublicRecords,
+  tursoGetCategories: mockTursoGetCategories,
+  tursoAddCategory: mockTursoAddCategory,
+  tursoDeleteCategory: mockTursoDeleteCategory,
   initTursoSchema: mockInitTursoSchema,
 }));
 
@@ -77,18 +85,18 @@ describe("content", () => {
   });
 
   describe("generateId", () => {
-    it("should generate IDs in k-number format", async () => {
+    it("should generate IDs in prefix-number format", async () => {
       const { generateId } = await import("@/lib/content");
       const id = await generateId();
-      expect(id).toMatch(/^k\d+$/);
-      expect(parseInt(id.slice(1))).toBeGreaterThanOrEqual(1);
+      expect(id).toMatch(/^.+-\d+$/);
+      expect(parseInt(id.split("-").slice(-1)[0])).toBeGreaterThanOrEqual(1);
     });
 
-    it("should always return string starting with 'k'", async () => {
+    it("should always return unique string IDs", async () => {
       const { generateId } = await import("@/lib/content");
       for (let i = 0; i < 10; i++) {
         const id = await generateId();
-        expect(id).toMatch(/^k\d+$/);
+        expect(id).toMatch(/^.+-\d+$/);
       }
     });
 
@@ -110,8 +118,8 @@ describe("content", () => {
   describe("getRecords", () => {
     it("should return records from Turso when configured", async () => {
       mockIsTursoConfigured.mockReturnValue(true);
-      mockTursoGetRecords.mockResolvedValue([
-        { id: "k1", slug: "test", title: "Test", date: "2026-01-01", category: "ai", summary: "summary", format: "md", visibility: "private" },
+      mockTursoGetPublicRecords.mockResolvedValue([
+        { id: "k1", slug: "test", title: "Test", date: "2026-01-01", category: "ai", summary: "summary", format: "md", visibility: "public" },
       ]);
 
       const { getRecords } = await import("@/lib/content");
@@ -133,7 +141,7 @@ describe("content", () => {
 
     it("should return empty array when Turso returns empty", async () => {
       mockIsTursoConfigured.mockReturnValue(true);
-      mockTursoGetRecords.mockResolvedValue([]);
+      mockTursoGetPublicRecords.mockResolvedValue([]);
 
       const { getRecords } = await import("@/lib/content");
       const records = await getRecords();

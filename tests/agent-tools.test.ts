@@ -41,6 +41,12 @@ vi.mock("@/lib/content", () => ({
   ]),
   writeRecord: vi.fn(async () => {}),
   generateId: vi.fn(async () => "k3"),
+  getTags: vi.fn(async () => ({
+    frontend: { label: "Frontend", icon: "frontend", color: "#3b82f6" },
+    backend: { label: "Backend", icon: "backend", color: "#10b981" },
+  })),
+  addTag: vi.fn(async () => {}),
+  deleteTag: vi.fn(async () => {}),
 }));
 
 vi.mock("@/lib/web-search", () => ({
@@ -60,6 +66,7 @@ vi.mock("@/lib/zvec", () => ({
     { recordId: "k1", title: "Test", score: 0.85 },
   ]),
   initIndex: vi.fn(async () => {}),
+  addToIndex: vi.fn(async () => {}),
 }));
 
 vi.mock("@/lib/skill-importer", () => ({
@@ -91,9 +98,9 @@ describe("Agent Tools", () => {
   });
 
   describe("Tool definitions", () => {
-    it("should define exactly 11 tools", async () => {
+    it("should define exactly 14 tools", async () => {
       const { tools } = await import("@/lib/agent-tools");
-      expect(tools).toHaveLength(11);
+      expect(tools).toHaveLength(14);
     });
 
     it("should have all expected tool names", async () => {
@@ -110,6 +117,9 @@ describe("Agent Tools", () => {
       expect(names).toContain("fetch_skill");
       expect(names).toContain("import_skill");
       expect(names).toContain("write_record");
+      expect(names).toContain("list_categories");
+      expect(names).toContain("add_category");
+      expect(names).toContain("delete_category");
     });
 
     it("should have all tools with execute function", async () => {
@@ -168,7 +178,7 @@ describe("Agent Tools", () => {
     it("should return OpenAI function calling format", async () => {
       const { getToolDefinitions } = await import("@/lib/agent-tools");
       const defs = getToolDefinitions();
-      expect(defs).toHaveLength(11);
+      expect(defs).toHaveLength(14);
       for (const def of defs) {
         expect(def.type).toBe("function");
         expect(def.function).toHaveProperty("name");
@@ -454,7 +464,7 @@ describe("Agent Tools", () => {
       const result = await tool.execute({ title: "Missing content" });
 
       expect(result.status).toBe("error");
-      expect(result.error).toContain("title, content, and category are required");
+      expect(result.error).toContain("title and content are required");
     });
   });
 

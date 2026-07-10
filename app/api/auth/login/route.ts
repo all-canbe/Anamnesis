@@ -1,83 +1,89 @@
 import { NextRequest, NextResponse } from "next/server";
-import { validateCredentials, createToken } from "@/lib/auth";
-
-// ─── 登录限流（IP + username 滑动窗口，5 次/5 分钟）───
-const RATE_LIMIT_WINDOW = 5 * 60 * 1000;
-const RATE_LIMIT_MAX = 5;
-const loginAttempts = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(key: string): boolean {
-  const now = Date.now();
-  // 清理所有已过期的条目，防止内存泄漏
-  for (const [k, v] of loginAttempts) {
-    if (now > v.resetAt) loginAttempts.delete(k);
-  }
-  const record = loginAttempts.get(key);
-  if (!record) {
-    loginAttempts.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
-    return true;
-  }
-  if (record.count >= RATE_LIMIT_MAX) return false;
-  record.count++;
-  return true;
-}
-
-function clearRateLimit(key: string): void {
-  loginAttempts.delete(key);
-}
+import { validateEmailLogin, validateAdminLogin, createToken } from "@/lib/auth";
+import { verifyCaptchaToken } from "@/lib/captcha";
+import { checkRateLimit, clearRateLimit, resetAllRateLimits } from "@/lib/rate-limit";
 
 /** 重置所有限流状态（仅供测试使用） */
-export function _resetLoginRateLimit(): void {
-  loginAttempts.clear();
+export async function _resetLoginRateLimit(): Promise<void> {
+  await resetAllRateLimits();
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { username, password } = await request.json();
+    const { email, password, captchaToken } = await request.json();
 
-    if (!username || !password) {
+    if (!email || !password || !captchaToken) {
       return NextResponse.json(
-        { ok: false, error: "username and password are required" },
+        { ok: false, error: "所有字段为必填项" },
         { status: 400 }
       );
     }
 
-    // 限流：IP + username 双键
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-    const ipKey = `ip:${ip}`;
-    const userKey = `user:${username}`;
-    if (!checkRateLimit(ipKey) || !checkRateLimit(userKey)) {
+    // 验证滑块验证码（测试环境跳过）
+    const captchaValid = process.env.NODE_ENV === "test" ? true : await verifyCaptchaToken(captchaToken);
+    if (!captchaValid) {
       return NextResponse.json(
-        { ok: false, error: "Too many login attempts, please try again later" },
+        { ok: false, error: "验证码已过期，请重新滑动验证" },
+        { status: 400 }
+      );
+    }
+
+    // 限流：IP + 邮箱（基于数据库，跨实例共享）
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const ipKey = `login:ip:${ip}`;
+    const userKey = `login:user:${email.toLowerCase()}`;
+
+    const [ipAllowed, userAllowed] = await Promise.all([
+      checkRateLimit(ipKey),
+      checkRateLimit(userKey),
+    ]);
+
+    if (!ipAllowed || !userAllowed) {
+      return NextResponse.json(
+        { ok: false, error: "登录尝试过于频繁，请稍后再试" },
         { status: 429 }
       );
     }
 
-    const valid = await validateCredentials(username, password);
-    if (!valid) {
-      return NextResponse.json(
-        { ok: false, error: "Invalid credentials" },
-        { status: 401 }
-      );
+    // 尝试邮箱登录
+    const userId = await validateEmailLogin(email, password);
+    if (userId) {
+      await Promise.all([clearRateLimit(ipKey), clearRateLimit(userKey)]);
+      const token = await createToken(userId);
+      const response = NextResponse.json({ ok: true, token, email });
+      response.cookies.set("zhiyi_token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 24 * 60 * 60,
+      });
+      return response;
     }
 
-    // 登录成功：清除限流计数
-    clearRateLimit(ipKey);
-    clearRateLimit(userKey);
+    // 兼容旧 admin 登录
+    const adminValid = await validateAdminLogin(email, password);
+    if (adminValid) {
+      await Promise.all([clearRateLimit(ipKey), clearRateLimit(userKey)]);
+      const token = await createToken("admin");
+      const response = NextResponse.json({ ok: true, token, email: "admin" });
+      response.cookies.set("zhiyi_token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 24 * 60 * 60,
+      });
+      return response;
+    }
 
-    const token = await createToken(username);
-    const response = NextResponse.json({ ok: true, token, username });
-    response.cookies.set("zhiyi_token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 24 * 60 * 60, // 24 hours
-    });
-    return response;
+    return NextResponse.json(
+      { ok: false, error: "邮箱或密码错误" },
+      { status: 401 }
+    );
   } catch {
     return NextResponse.json(
-      { ok: false, error: "Invalid request body" },
+      { ok: false, error: "请求处理失败" },
       { status: 400 }
     );
   }

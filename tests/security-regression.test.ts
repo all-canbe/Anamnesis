@@ -25,6 +25,26 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 
+// ─── Mock rate-limiter for all login tests (uses Turso, not available in test) ───
+const rateLimitStore = new Map<string, number>();
+let mockRateLimitEnabled = false;
+
+vi.mock("@/lib/rate-limit", () => ({
+  checkRateLimit: vi.fn(async (key: string) => {
+    if (!mockRateLimitEnabled) return true;
+    const count = rateLimitStore.get(key) || 0;
+    if (count >= 5) return false;
+    rateLimitStore.set(key, count + 1);
+    return true;
+  }),
+  clearRateLimit: vi.fn(async (key: string) => {
+    rateLimitStore.delete(key);
+  }),
+  resetAllRateLimits: vi.fn(async () => {
+    rateLimitStore.clear();
+  }),
+}));
+
 // ═══════════════════════════════════════════════════════════════
 // Module-level mock state (vi.mock is hoisted, so must use module-level vars)
 // ═══════════════════════════════════════════════════════════════
@@ -300,7 +320,7 @@ describe("Security: SSRF Protection in web_fetch [F-006]", () => {
 
 describe("Security: Doom Loop Bypass Prevention", () => {
   const noopEnqueue = vi.fn();
-  const makeConfig = () => ({ baseUrl: "https://api.test.com/v1", apiKey: "sk-test", model: "test", embeddingModel: "BAAI/bge-m3", zvecEnabled: false });
+  const makeConfig = () => ({ baseUrl: "https://api.test.com/v1", apiKey: "sk-test", model: "test", embeddingBaseUrl: "https://api.test.com/v1", embeddingApiKey: "", embeddingModel: "BAAI/bge-m3", zvecEnabled: false });
 
   function makeCtx(recentToolCalls: Array<{ name: string; args: string }>) {
     return {
@@ -463,40 +483,41 @@ describe("Security: safeError Edge Cases", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("Security: Login Brute-Force Protection [M2]", () => {
-  function makeLoginRequest(username: string, password: string): NextRequest {
+  async function makeLoginRequest(email: string, password: string): Promise<NextRequest> {
     return new NextRequest("http://localhost/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ email, password, captchaToken: "test" }),
     });
   }
 
   beforeEach(async () => {
     const { _resetLoginRateLimit } = await import("../app/api/auth/login/route");
-    _resetLoginRateLimit();
+    await _resetLoginRateLimit();
+    mockRateLimitEnabled = false;
   });
 
   it("should return 401 for wrong password", async () => {
     const { POST } = await import("../app/api/auth/login/route");
-    const res = await POST(makeLoginRequest("admin", "wrong"));
+    const res = await POST(await makeLoginRequest("admin", "wrong"));
     expect(res.status).toBe(401);
   });
 
-  it("should return 400 for missing username", async () => {
+  it("should return 400 for missing email", async () => {
     const { POST } = await import("../app/api/auth/login/route");
-    const res = await POST(makeLoginRequest("", "kb65"));
+    const res = await POST(await makeLoginRequest("", "admin710"));
     expect(res.status).toBe(400);
   });
 
   it("should return 400 for missing password", async () => {
     const { POST } = await import("../app/api/auth/login/route");
-    const res = await POST(makeLoginRequest("admin", ""));
+    const res = await POST(await makeLoginRequest("admin", ""));
     expect(res.status).toBe(400);
   });
 
   it("should return 200 for correct credentials", async () => {
     const { POST } = await import("../app/api/auth/login/route");
-    const res = await POST(makeLoginRequest("admin", "kb65"));
+    const res = await POST(await makeLoginRequest("admin", "admin710"));
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.ok).toBe(true);
@@ -505,32 +526,33 @@ describe("Security: Login Brute-Force Protection [M2]", () => {
 
   it("should rate-limit after 5 failed attempts (EXPECTED after fix)", async () => {
     const { POST } = await import("../app/api/auth/login/route");
+    mockRateLimitEnabled = true;
 
     // Make 5 failed attempts
     for (let i = 0; i < 5; i++) {
-      const res = await POST(makeLoginRequest("admin", `wrong-${i}`));
+      const res = await POST(await makeLoginRequest("admin", `wrong-${i}`));
       expect(res.status).toBe(401);
     }
 
     // 6th attempt — even with correct password — should be rate-limited
-    const res = await POST(makeLoginRequest("admin", "kb65"));
+    const res = await POST(await makeLoginRequest("admin", "admin710"));
 
     // EXPECTED after fix: 429 Too Many Requests
-    // CURRENT (vulnerable): 200 OK (no rate limiting)
     expect(res.status).toBe(429);
   });
 
   it("should NOT lock out with correct credentials interspersed", async () => {
     const { POST } = await import("../app/api/auth/login/route");
+    mockRateLimitEnabled = true;
 
     // Interspersed: fail, succeed, fail, succeed, fail
-    await POST(makeLoginRequest("admin", "wrong"));
-    await POST(makeLoginRequest("admin", "kb65"));
-    await POST(makeLoginRequest("admin", "wrong"));
-    await POST(makeLoginRequest("admin", "kb65"));
+    await POST(await makeLoginRequest("admin", "wrong"));
+    await POST(await makeLoginRequest("admin", "admin710"));
+    await POST(await makeLoginRequest("admin", "wrong"));
+    await POST(await makeLoginRequest("admin", "admin710"));
 
     // 5th attempt should not be rate-limited
-    const res = await POST(makeLoginRequest("admin", "kb65"));
+    const res = await POST(await makeLoginRequest("admin", "admin710"));
     expect(res.status).toBe(200);
   });
 });

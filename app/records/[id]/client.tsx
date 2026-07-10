@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { RecordMeta } from "@/lib/types";
-import { CATEGORIES, THUMB_COLORS } from "@/lib/types";
+import { THUMB_COLORS } from "@/lib/types";
 import { useLanguage } from "@/lib/language-context";
 import { ArrowLeftIcon, ArrowRightIcon, BookOpenIcon, HomeIcon, CategoryIcon, getCategorySvgPath } from "@/lib/icons";
 
@@ -14,7 +14,7 @@ interface TocItem {
 }
 
 export function DetailClient({
-  prev, next, recordId, similar, contentHtml, category
+  prev, next, recordId, similar, contentHtml, category, categories
 }: {
   prev: RecordMeta | null;
   next: RecordMeta | null;
@@ -22,6 +22,7 @@ export function DetailClient({
   similar: RecordMeta[];
   contentHtml: string;
   category: string;
+  categories?: { key: string; label: string }[];
 }) {
   const { t } = useLanguage();
   const [tocItems, setTocItems] = useState<TocItem[]>([]);
@@ -81,7 +82,7 @@ export function DetailClient({
 
     if (items.length > 0) {
       panel.innerHTML =
-        `<div class="floating-toc-title">Contents</div>` +
+        `<div class="floating-toc-title">${t("detailContents")}</div>` +
         items.map((item) =>
           `<a class="detail-toc-item ${item.tag}" href="#${item.id}" data-toc-id="${item.id}">${item.text}</a>`
         ).join("");
@@ -240,11 +241,11 @@ export function DetailClient({
       {/* Similar recommendations */}
       {similar.length > 0 && (
         <div className="similar-section">
-          <div className="similar-title"><BookOpenIcon size={14} /> Similar Articles</div>
+          <div className="similar-title"><BookOpenIcon size={14} /> {t("detailSimilarTitle")}</div>
           <div className="similar-list">
             {similar.map((r) => {
-              const cat = CATEGORIES[r.category as keyof typeof CATEGORIES] || {};
-              const colorIdx = Object.keys(CATEGORIES).indexOf(r.category);
+              const cat = categories?.find(c => c.key === r.category);
+              const colorIdx = categories?.findIndex(c => c.key === r.category) ?? -1;
               const color = THUMB_COLORS[colorIdx >= 0 ? colorIdx : 0];
               return (
                 <div
@@ -257,7 +258,7 @@ export function DetailClient({
                   </div>
                   <div className="similar-item-body">
                     <div className="similar-item-title">{r.title}</div>
-                    <div className="similar-item-meta">{r.date} · {cat.label || r.category}</div>
+                    <div className="similar-item-meta">{r.date} · {cat?.label || r.category}</div>
                   </div>
                 </div>
               );

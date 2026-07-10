@@ -1,51 +1,6 @@
 [
   {
-    "id": "k13",
-    "slug": "readme",
-    "title": "README",
-    "date": "2026-07-03",
-    "category": "frontend",
-    "summary": "Test Skill  This is a README file with content.",
-    "format": "md"
-  },
-  {
-    "id": "k14",
-    "slug": "guide",
-    "title": "guide",
-    "date": "2026-07-03",
-    "category": "frontend",
-    "summary": "Guide  Step by step instructions.",
-    "format": "md"
-  },
-  {
-    "id": "k15",
-    "slug": "readme",
-    "title": "README",
-    "date": "2026-07-03",
-    "category": "frontend",
-    "summary": "Test Skill  This is a README file with content.",
-    "format": "md"
-  },
-  {
-    "id": "k16",
-    "slug": "guide",
-    "title": "guide",
-    "date": "2026-07-03",
-    "category": "frontend",
-    "summary": "Guide  Step by step instructions.",
-    "format": "md"
-  },
-  {
-    "id": "k17",
-    "slug": "readme",
-    "title": "README",
-    "date": "2026-07-03",
-    "category": "frontend",
-    "summary": "Test Skill  This is a README file with content.",
-    "format": "md"
-  },
-  {
-    "id": "k18",
+    "id": "k20",
     "slug": "guide",
     "title": "guide",
     "date": "2026-07-03",
@@ -63,7 +18,25 @@
     "format": "md"
   },
   {
-    "id": "k20",
+    "id": "k18",
+    "slug": "guide",
+    "title": "guide",
+    "date": "2026-07-03",
+    "category": "frontend",
+    "summary": "Guide  Step by step instructions.",
+    "format": "md"
+  },
+  {
+    "id": "k17",
+    "slug": "readme",
+    "title": "README",
+    "date": "2026-07-03",
+    "category": "frontend",
+    "summary": "Test Skill  This is a README file with content.",
+    "format": "md"
+  },
+  {
+    "id": "k16",
     "slug": "guide",
     "title": "guide",
     "date": "2026-07-03",
@@ -73,11 +46,11 @@
   },
   {
     "id": "k13",
-    "slug": "test-article",
-    "title": "Test Article",
-    "date": "2026-07-01",
+    "slug": "readme",
+    "title": "README",
+    "date": "2026-07-03",
     "category": "frontend",
-    "summary": "A test summary",
+    "summary": "Test Skill  This is a README file with content.",
     "format": "md"
   },
   {
@@ -90,30 +63,12 @@
     "format": "md"
   },
   {
-    "id": "k14",
-    "slug": "黄峥公众号文章总括",
-    "title": "黄峥公众号文章总括",
-    "date": "2026-06-05",
-    "category": "reading",
-    "summary": "基于黄峥 2016-2017 年在个人公众号发表的 10 篇文章的整体性总结。",
-    "format": "md"
-  },
-  {
     "id": "k15",
     "slug": "humanizer-zh-editing-skill",
     "title": "Humanizer-zh: 去除中文AI写作痕迹的编辑技能",
     "date": "2026-06-05",
     "category": "ai",
     "summary": "基于维基百科AI写作特征整理的24种AI文本模式识别与改写指南，帮助去除中文文本的AI味，让文字更自然有人味。",
-    "format": "md"
-  },
-  {
-    "id": "k13",
-    "slug": "咖啡种类介绍-从阿拉比卡到罗布斯塔",
-    "title": "咖啡种类介绍：从阿拉比卡到罗布斯塔",
-    "date": "2026-05-29",
-    "category": "reading",
-    "summary": "咖啡种类繁多，从阿拉比卡到罗布斯塔，从单品到拼配，本文带你了解常见咖啡豆品种的特点与风味。",
     "format": "md"
   },
   {

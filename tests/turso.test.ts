@@ -86,7 +86,7 @@ describe("turso", () => {
       const { initTursoSchema } = await import("@/lib/turso");
       await initTursoSchema();
 
-      expect(global.fetch).toHaveBeenCalledTimes(13);
+      expect(global.fetch).toHaveBeenCalledTimes(16);
     });
 
     it("should throw when Turso is not configured", async () => {
@@ -253,43 +253,53 @@ describe("turso", () => {
 
   describe("tursoAddTag", () => {
     it("should execute INSERT with upsert for tags", async () => {
-      global.fetch = vi.fn().mockResolvedValue(
-        new Response(JSON.stringify(makeTursoResponse()), { status: 200 })
+      global.fetch = vi.fn().mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify(makeTursoResponse([])), { status: 200 }))
       ) as any;
 
       const { tursoAddTag } = await import("@/lib/turso");
       await tursoAddTag("new-tag", "New Tag", "star");
 
-      const callArgs = (global.fetch as any).mock.calls[0];
-      const body = JSON.parse(callArgs[1].body);
-      expect(body.statements[0].q).toContain("INSERT INTO tags");
+      // tursoAddTag 先 SELECT 检查冲突，再 INSERT
+      const insertCall = (global.fetch as any).mock.calls.find((c: any) => {
+        const body = JSON.parse(c[1].body);
+        return body.statements[0].q.includes("INSERT INTO tags");
+      });
+      expect(insertCall).toBeDefined();
     });
   });
 
   describe("tursoDeleteTag", () => {
     it("should execute DELETE for tags", async () => {
-      global.fetch = vi.fn().mockResolvedValue(
-        new Response(JSON.stringify(makeTursoResponse()), { status: 200 })
+      global.fetch = vi.fn().mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify(makeTursoResponse([[0, 0]])), { status: 200 }))
       ) as any;
 
       const { tursoDeleteTag } = await import("@/lib/turso");
       await tursoDeleteTag("custom");
 
-      const callArgs = (global.fetch as any).mock.calls[0];
-      const body = JSON.parse(callArgs[1].body);
-      expect(body.statements[0].q).toContain("DELETE FROM tags");
+      const deleteCall = (global.fetch as any).mock.calls.find((c: any) => {
+        const body = JSON.parse(c[1].body);
+        return body.statements[0].q.includes("DELETE FROM tags");
+      });
+      expect(deleteCall).toBeDefined();
     });
 
     it("should not delete built-in category tags", async () => {
-      global.fetch = vi.fn().mockResolvedValue(
-        new Response(JSON.stringify(makeTursoResponse()), { status: 200 })
+      global.fetch = vi.fn().mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify(makeTursoResponse([[1, 1]])), { status: 200 }))
       ) as any;
 
       const { tursoDeleteTag } = await import("@/lib/turso");
       await tursoDeleteTag("frontend");
 
-      // Built-in category should not trigger a DELETE
-      expect(global.fetch).not.toHaveBeenCalled();
+      // SELECT was called to check is_public, but no DELETE should be issued
+      const calls = (global.fetch as any).mock.calls;
+      const deleteCall = calls.find((c: any) => {
+        const body = JSON.parse(c[1].body);
+        return body.statements[0].q.includes("DELETE FROM tags");
+      });
+      expect(deleteCall).toBeUndefined();
     });
   });
 });

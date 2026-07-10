@@ -1,5 +1,5 @@
 import { commitFile, deleteFile as githubDeleteFile, isGithubMode, triggerRedeploy } from "./github-api";
-import { type RecordMeta, type ContentRecord, CATEGORIES } from "./types";
+import { type RecordMeta, type ContentRecord } from "./types";
 import {
   isTursoConfigured,
   tursoGetRecords,
@@ -10,6 +10,9 @@ import {
   tursoAddTag,
   tursoDeleteTag,
   tursoGetPublicRecords,
+  tursoGetCategories,
+  tursoAddCategory,
+  tursoDeleteCategory,
   initTursoSchema,
 } from "./turso";
 import fs from "fs";
@@ -44,21 +47,25 @@ function relPath(absPath: string): string {
   return path.relative(process.cwd(), absPath).replace(/\\/g, "/");
 }
 
-export async function getRecords(userId?: string): Promise<RecordMeta[]> {
+export async function getRecords(userId?: string, visibility?: string): Promise<RecordMeta[]> {
   await ensureTurso();
   if (isTursoConfigured() && userId) {
     try {
-      return await tursoGetRecords(userId);
+      return await tursoGetRecords(userId, visibility);
     } catch {}
   }
-  // local fs fallback (no user isolation)
+  // 未登录用户只能看公开记录
   if (isTursoConfigured() && !userId) {
     try {
-      return await tursoGetRecords("admin");
+      return await tursoGetPublicRecords(visibility === "public" ? undefined : undefined);
     } catch {}
   }
   const raw = fs.readFileSync(INDEX_PATH, "utf-8");
-  return JSON.parse(raw);
+  const records = JSON.parse(raw) as RecordMeta[];
+  if (visibility) {
+    return records.filter((r) => r.visibility === visibility);
+  }
+  return records;
 }
 
 export async function getRecord(id: string, userId?: string): Promise<ContentRecord | null> {
@@ -85,13 +92,50 @@ export async function getRecord(id: string, userId?: string): Promise<ContentRec
   return { meta, content };
 }
 
-export async function getCategories(userId?: string): Promise<string[]> {
-  const records = await getRecords(userId);
-  return [...new Set(records.map((r) => r.category))];
+export async function getCategories(userId?: string): Promise<import("./turso").CategoryRow[]> {
+  await ensureTurso();
+  if (isTursoConfigured()) {
+    try {
+      return await tursoGetCategories(userId);
+    } catch {}
+  }
+  return [];
 }
 
-export async function getFilteredRecords(category?: string, userId?: string): Promise<RecordMeta[]> {
-  const records = await getRecords(userId);
+export async function getPublicCategories(): Promise<import("./turso").CategoryRow[]> {
+  await ensureTurso();
+  if (isTursoConfigured()) {
+    try {
+      return await tursoGetCategories();
+    } catch {}
+  }
+  return [];
+}
+
+export async function addCategory(key: string, label: string, label_en: string, icon: string, color: string, isPublic: boolean, userId?: string): Promise<void> {
+  await ensureTurso();
+  if (isTursoConfigured()) {
+    try {
+      await tursoAddCategory(key, label, label_en, icon, color, isPublic, userId);
+      return;
+    } catch {}
+  }
+  throw new Error("Category management requires Turso database.");
+}
+
+export async function deleteCategory(key: string, userId?: string): Promise<void> {
+  await ensureTurso();
+  if (isTursoConfigured()) {
+    try {
+      await tursoDeleteCategory(key, userId);
+      return;
+    } catch {}
+  }
+  throw new Error("Category management requires Turso database.");
+}
+
+export async function getFilteredRecords(category?: string, userId?: string, visibility?: string): Promise<RecordMeta[]> {
+  const records = await getRecords(userId, visibility);
   if (!category || category === "all") return records;
   return records.filter((r) => r.category === category);
 }
@@ -99,13 +143,14 @@ export async function getFilteredRecords(category?: string, userId?: string): Pr
 export async function generateId(userId?: string): Promise<string> {
   try {
     const records = await getRecords(userId);
+    const prefix = userId ? userId.slice(0, 8) : "anon";
     const maxId = records.reduce((max, r) => {
-      const num = parseInt((r.id || "k0").replace("k", ""), 10);
+      const num = parseInt((r.id || `${prefix}0`).replace(`${prefix}-`, "").replace("k", ""), 10);
       return num > max ? num : max;
     }, 0);
-    return `k${maxId + 1}`;
+    return `${prefix}-${maxId + 1}`;
   } catch {
-    return `k${Date.now().toString(36)}`;
+    return `r-${Date.now().toString(36)}`;
   }
 }
 
@@ -120,19 +165,24 @@ ${Object.entries(meta)
 
 function buildIndex(): RecordMeta[] {
   const files = fs.readdirSync(CONTENT_DIR).filter((f) => f.endsWith(".md"));
-  const index: RecordMeta[] = files.map((f) => {
+  const index: RecordMeta[] = [];
+  const seen = new Set<string>();
+  files.forEach((f) => {
     const raw = fs.readFileSync(path.join(CONTENT_DIR, f), "utf-8");
     const match = raw.match(/^---\n([\s\S]+?)\n---/);
-    if (!match) return null;
+    if (!match) return;
     const attrs: { [key: string]: string } = {};
     match[1].split("\n").forEach((line) => {
       const sep = line.indexOf(":");
       if (sep > 0) attrs[line.slice(0, sep).trim()] = line.slice(sep + 1).trim().replace(/^"|"$/g, "");
     });
-    return attrs as unknown as RecordMeta;
-  }).filter(Boolean) as RecordMeta[];
+    const record = attrs as unknown as RecordMeta;
+    if (!record.id || seen.has(record.id)) return;
+    seen.add(record.id);
+    index.push(record);
+  });
 
-  index.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(b.id));
+  index.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   return index;
 }
 
@@ -212,19 +262,11 @@ export async function getTags(userId?: string): Promise<Record<string, { label: 
     } catch {}
   }
 
-  if (!fs.existsSync(TAGS_PATH)) return Object.fromEntries(
-    Object.entries(CATEGORIES).map(([k, v]) => [k, { ...v, color: "#3b82f6", isPublic: true }])
-  ) as Record<string, { label: string; icon: string; color: string; isPublic?: boolean }>;
+  if (!fs.existsSync(TAGS_PATH)) return {};
   try {
-    const custom = JSON.parse(fs.readFileSync(TAGS_PATH, "utf-8"));
-    const base = Object.fromEntries(
-      Object.entries(CATEGORIES).map(([k, v]) => [k, { ...v, color: "#3b82f6", isPublic: true }])
-    );
-    return { ...base, ...custom };
+    return JSON.parse(fs.readFileSync(TAGS_PATH, "utf-8"));
   } catch {
-    return Object.fromEntries(
-      Object.entries(CATEGORIES).map(([k, v]) => [k, { ...v, color: "#3b82f6", isPublic: true }])
-    ) as Record<string, { label: string; icon: string; color: string; isPublic?: boolean }>;
+    return {};
   }
 }
 
@@ -258,7 +300,6 @@ export async function addTag(key: string, label: string, icon: string, color = "
 }
 
 export async function deleteTag(key: string, userId?: string): Promise<void> {
-  if (key in CATEGORIES) return;
   await ensureTurso();
 
   if (isTursoConfigured()) {

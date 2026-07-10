@@ -21,10 +21,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { baseUrl, apiKey, model, embeddingModel, zvecEnabled } = body as {
+    const { baseUrl, apiKey, model, embeddingBaseUrl, embeddingApiKey, embeddingModel, zvecEnabled } = body as {
       baseUrl: string;
       apiKey?: string;
       model: string;
+      embeddingBaseUrl?: string;
+      embeddingApiKey?: string;
       embeddingModel?: string;
       zvecEnabled?: boolean;
     };
@@ -41,6 +43,8 @@ export async function POST(request: NextRequest) {
         baseUrl,
         apiKey: apiKey || "",
         model: model || "",
+        embeddingBaseUrl: embeddingBaseUrl || "",
+        embeddingApiKey: embeddingApiKey || "",
         embeddingModel: embeddingModel || "",
         zvecEnabled: zvecEnabled || false,
       },

@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   if (!username) return unauthorizedResponse();
   const { searchParams } = new URL(request.url);
   const visibility = searchParams.get("visibility") || undefined;
-  const records = await getRecords(username);
+  const records = await getRecords(username, visibility);
   const counts: Record<string, number> = {};
   records.forEach((r: any) => {
     if (visibility && r.visibility !== visibility) return;

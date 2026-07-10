@@ -50,7 +50,13 @@ function renderUserContent(content: string): { __html: string } {
     return { __html: `${pill} ${renderMarkdown(rest)}` };
   }
 
-export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+import type { CachedAgentConfig } from "./shell";
+
+export function AgentSidebar({ open, onToggle, settingsConfig }: {
+  open: boolean;
+  onToggle: () => void;
+  settingsConfig: CachedAgentConfig | null;
+}) {
   const { t } = useLanguage();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeId, setActiveId] = useState<string>("");
@@ -60,6 +66,7 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
   const [toolStatus, setToolStatus] = useState("");
   const [thinking, setThinking] = useState(false); // 等待首字响应
   const [errorMessage, setErrorMessage] = useState(""); // 持久化错误消息
+  const errorRef = useRef(""); // ref 跟踪最新错误，避免闭包陷阱
   const [showSessionList, setShowSessionList] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -207,6 +214,16 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
     return [...new Set(matches)].map((m) => ({ id: m.slice(1, -1), label: m }));
   }
 
+  // 回滚：移除最后一条用户消息（用于 API 失败时恢复状态）
+  const rollbackLastUserMsg = useCallback(() => {
+    setSessions((prev) => {
+      const session = prev.find((s) => s.id === activeId);
+      if (!session || session.messages.length === 0) return prev;
+      const msgs = session.messages.slice(0, -1);
+      return prev.map((s) => (s.id === activeId ? { ...s, messages: msgs, updatedAt: Date.now() } : s));
+    });
+  }, [activeId]);
+
   const sendMessage = useCallback(async () => {
     if (sending) return;
     const body = input.trim();
@@ -216,16 +233,12 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
     if (!text || streaming || !activeId) return;
     setSending(true);
 
-    // 检查 API 配置
-    try {
-      const res = await fetch("/api/settings");
-      const data = await res.json();
-      if (!data.configured) {
-        setErrorMessage("**Agent 未配置**\n\n请在左侧设置中填入 LLM API Key 和 Base URL。\n\n点击左下角齿轮图标打开设置 → Agent 标签页。");
-        return;
-      }
-    } catch {
-      // 网络错误，继续尝试发送
+    // 检查 API 配置（优先使用缓存，避免认证时序问题）
+    if (settingsConfig !== null && !settingsConfig.configured) {
+      setErrorMessage(t("agentNotConfigured"));
+      errorRef.current = t("agentNotConfigured");
+      setSending(false);
+      return;
     }
 
     setInput("");
@@ -238,14 +251,14 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
     setToolStatus("");
     setThinking(true);
     setErrorMessage("");
+    errorRef.current = "";
 
     const abort = new AbortController();
     abortRef.current = abort;
 
     try {
-      const currentSessions = loadSessions();
-      const session = currentSessions.find((s) => s.id === activeId);
-      const history = session ? getContextForLLM(session.messages) : [];
+      // 使用当前 state 构建 history，避免 localStorage 竞态
+      const history = getContextForLLM(messages);
 
       const res = await fetch("/api/agent/chat", {
         method: "POST",
@@ -255,9 +268,10 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
       });
 
       if (!res.ok || !res.body) {
+        rollbackLastUserMsg();
         const msg = res.status === 401
-          ? "**认证失败**\n\nAPI Key 无效，请在设置中检查。"
-          : "**连接失败**\n\n无法连接到 LLM 服务，请检查 Base URL 是否正确。";
+          ? t("agentAuthFailed")
+          : t("agentConnectionFailed");
         setStreamContent(msg);
         return;
       }
@@ -284,13 +298,13 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
               setStreamContent(fullContent);
               setThinking(false);
             } else if (data.type === "tool_start") {
-              setToolStatus(`正在执行: ${data.name}...`);
+              setToolStatus(t("agentToolRunning").replace("{name}", data.name));
               setThinking(false);
             } else if (data.type === "tool_end") {
-              setToolStatus(data.status === "error" ? `工具 ${data.name} 执行失败` : "");
+              setToolStatus(data.status === "error" ? t("agentToolFailed").replace("{name}", data.name) : "");
             } else if (data.type === "tool" || data.type === "tool_done") {
               // 兼容旧事件
-              if (data.type === "tool") setToolStatus(`Using tool: ${data.name}...`);
+              if (data.type === "tool") setToolStatus(t("agentUsingTool").replace("{name}", data.name));
               else setToolStatus("");
             } else if (data.type === "done") {
               setToolStatus("");
@@ -298,7 +312,9 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
             } else if (data.type === "error") {
               setToolStatus("");
               setThinking(false);
-              setErrorMessage(data.content || "未知错误");
+              const errMsg = data.content || t("agentUnknownError");
+              setErrorMessage(errMsg);
+              errorRef.current = errMsg;
             }
           } catch {}
         }
@@ -307,19 +323,21 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
       if (fullContent) {
         const assistantMsg: ChatMessage = { role: "assistant", content: fullContent };
         setSessions((prev) => addMessage(prev, activeId, assistantMsg));
-      } else if (!errorMessage) {
-        setErrorMessage("LLM 服务未返回内容，请检查 API Key 和 Base URL 是否正确。");
+      } else if (!errorRef.current) {
+        rollbackLastUserMsg();
+        setErrorMessage(t("agentNoContent"));
       }
     } catch (err: any) {
       if (err.name !== "AbortError") {
-        setErrorMessage(`网络错误: ${err.message}`);
+        rollbackLastUserMsg();
+        setErrorMessage(t("agentNetworkError").replace("{message}", err.message));
       }
     } finally {
       setStreaming(false);
       setSending(false);
       abortRef.current = null;
     }
-  }, [input, streaming, activeId, activeSlash, sending]);
+  }, [input, streaming, activeId, activeSlash, sending, settingsConfig, t, messages, rollbackLastUserMsg]);
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (slashOpen) {
@@ -419,13 +437,13 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
               {t("agentTitle")}
             </h4>
             <div className="agent-header-actions">
-              <button className="agent-header-btn icon-btn" onClick={() => setShowSessionList((v) => !v)} title="Sessions">
+              <button className="agent-header-btn icon-btn" onClick={() => setShowSessionList((v) => !v)} title={t("agentSessions")}>
                 <MenuIcon size={14} />
               </button>
-              <button className="agent-header-btn icon-btn" onClick={handleClearSession} title={showClearConfirm ? "Click again to confirm" : "Clear conversation"}>
+              <button className="agent-header-btn icon-btn" onClick={handleClearSession} title={showClearConfirm ? t("agentClickAgainConfirm") : t("agentClearConversation")}>
                 {showClearConfirm ? <CheckIcon size={14} /> : <TrashIcon size={14} />}
               </button>
-              {showClearConfirm && <span className="agent-clear-confirm-text">Click again to clear</span>}
+              {showClearConfirm && <span className="agent-clear-confirm-text">{t("agentClickAgain")}</span>}
               <button className="agent-sidebar-toggle icon-btn" onClick={onToggle} title={t("agentCollapse")}>
                 <ChevronRightIcon size={14} />
               </button>
@@ -515,13 +533,13 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
                   <button
                     className="agent-msg-copy icon-btn"
                     onClick={() => handleCopyMessage(msg.content)}
-                    title="Copy message"
+                    title={t("agentCopyMessage")}
                   >
                     <CopyIcon size={12} />
                   </button>
                   {sources.length > 0 && (
                     <div className="agent-sources">
-                      <div className="agent-sources-label"><BookOpenIcon size={12} /> Sources</div>
+                      <div className="agent-sources-label"><BookOpenIcon size={12} /> {t("agentSources")}</div>
                       <div className="agent-sources-list">
                         {sources.map((s) => (
                           <a
@@ -653,7 +671,7 @@ export function AgentSidebar({ open, onToggle }: { open: boolean; onToggle: () =
               </div>
             </div>
           </div>
-          <div className="agent-disclaimer">内容由 AI 生成，仅供参考</div>
+          <div className="agent-disclaimer">{t("agentDisclaimer")}</div>
           {slashOpen && activeSlash === null && (
             <SlashCommandPanel
               filterText={slashFilter}

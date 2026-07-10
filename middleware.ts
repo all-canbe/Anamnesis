@@ -1,9 +1,25 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
+import { warnProductionJwtSecret } from "@/lib/auth";
+
+// 启动时检查生产环境密钥安全（仅执行一次）
+let securityWarned = false;
+if (!securityWarned) {
+  securityWarned = true;
+  warnProductionJwtSecret();
+}
 
 // Whitelist: routes that don't require authentication
-const PUBLIC_PATHS = ["/api/auth/login", "/api/auth/me", "/api/auth/logout", "/api/auth/dev-login"];
+const PUBLIC_PATHS = [
+  "/api/auth/login",
+  "/api/auth/me",
+  "/api/auth/logout",
+  "/api/auth/send-code",
+  "/api/auth/register",
+  "/api/auth/captcha",
+  "/api/records/public",
+];
 
 // Routes that require authentication
 const PROTECTED_PREFIXES = ["/api/"];

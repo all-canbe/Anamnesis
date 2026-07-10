@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useLanguage } from "@/lib/language-context";
-import { CATEGORIES } from "@/lib/types";
 
 interface ParsedFile {
   path: string;
@@ -27,6 +26,13 @@ export function UploadFolderDialog({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<"select" | "preview" | "uploading" | "done">("select");
   const [results, setResults] = useState<UploadResult[]>([]);
   const [progress, setProgress] = useState(0);
+  const [categories, setCategories] = useState<{key: string; label: string}[]>([]);
+  useEffect(() => {
+    fetch("/api/categories?mode=private")
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setCategories(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
   const [skillName, setSkillName] = useState("");
 
   function parseTitle(filename: string): string {
@@ -241,8 +247,8 @@ export function UploadFolderDialog({ onClose }: { onClose: () => void }) {
                       value={f.category}
                       onChange={(e) => updateFile(i, { category: e.target.value })}
                     >
-                      {Object.entries(CATEGORIES).map(([key, cat]) => (
-                        <option key={key} value={key}>{cat.label}</option>
+                      {categories.map(cat => (
+                        <option key={cat.key} value={cat.key}>{cat.label}</option>
                       ))}
                     </select>
                   </div>

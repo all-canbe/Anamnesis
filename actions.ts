@@ -39,7 +39,7 @@ export async function createRecord(formData: FormData) {
   const slug = slugify(title);
 
   const meta: RecordMeta = { id, slug, title, date, category: category as RecordMeta["category"], summary, format, visibility: "private" };
-  writeRecord(meta, content, username);
+  await writeRecord(meta, content, username);
   revalidatePath("/");
   revalidatePath("/orchestration");
 }
@@ -59,14 +59,14 @@ export async function updateRecord(id: string, formData: FormData) {
     category: category as RecordMeta["category"], summary, format,
     visibility: existing?.meta.visibility || "private",
   };
-  writeRecord(meta, content, username);
+  await writeRecord(meta, content, username);
   revalidatePath("/");
   revalidatePath("/orchestration");
 }
 
 export async function removeRecord(id: string) {
   const username = await requireAuth();
-  deleteRecord(id, username);
+  await deleteRecord(id, username);
   revalidatePath("/");
   revalidatePath("/orchestration");
 }

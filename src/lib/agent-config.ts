@@ -7,6 +7,8 @@ export interface AgentConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
+  embeddingBaseUrl: string;
+  embeddingApiKey: string;
   embeddingModel: string;
   zvecEnabled: boolean;
 }
@@ -14,6 +16,8 @@ export interface AgentConfig {
 const DEFAULT_BASE_URL = "https://api.siliconflow.cn/v1";
 const DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct";
 const DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3";
+const DEFAULT_EMBEDDING_BASE_URL = DEFAULT_BASE_URL;
+const DEFAULT_EMBEDDING_API_KEY = "";
 const ENC_PREFIX = "enc:";
 
 /** 对 API Key 加密存储，未配置 ENCRYPTION_KEY 时明文存储 */
@@ -89,6 +93,8 @@ export async function getAgentConfig(userId: string): Promise<AgentConfig> {
   const dbBaseUrl = await getSetting("agent_baseUrl", userId);
   const dbApiKey = await getSetting("agent_apiKey", userId);
   const dbModel = await getSetting("agent_model", userId);
+  const dbEmbeddingBaseUrl = await getSetting("embedding_baseUrl", userId);
+  const dbEmbeddingApiKey = await getSetting("embedding_apiKey", userId);
   const dbEmbeddingModel = await getSetting("embedding_model", userId);
   const dbZvecEnabled = await getSetting("zvec_enabled", userId);
   if (dbApiKey && dbBaseUrl) {
@@ -96,6 +102,8 @@ export async function getAgentConfig(userId: string): Promise<AgentConfig> {
       baseUrl: dbBaseUrl,
       apiKey: unpackApiKey(dbApiKey),
       model: dbModel || DEFAULT_MODEL,
+      embeddingBaseUrl: dbEmbeddingBaseUrl || DEFAULT_EMBEDDING_BASE_URL,
+      embeddingApiKey: dbEmbeddingApiKey ? unpackApiKey(dbEmbeddingApiKey) : "",
       embeddingModel: dbEmbeddingModel || DEFAULT_EMBEDDING_MODEL,
       zvecEnabled: dbZvecEnabled === "true",
     };
@@ -105,6 +113,8 @@ export async function getAgentConfig(userId: string): Promise<AgentConfig> {
     baseUrl: DEFAULT_BASE_URL,
     apiKey: "",
     model: DEFAULT_MODEL,
+    embeddingBaseUrl: DEFAULT_EMBEDDING_BASE_URL,
+    embeddingApiKey: DEFAULT_EMBEDDING_API_KEY,
     embeddingModel: DEFAULT_EMBEDDING_MODEL,
     zvecEnabled: false,
   };
@@ -123,6 +133,10 @@ export async function saveAgentConfig(
     await setSetting("agent_apiKey", packApiKey(cfg.apiKey), userId);
   }
   await setSetting("agent_model", cfg.model, userId);
+  await setSetting("embedding_baseUrl", cfg.embeddingBaseUrl || DEFAULT_EMBEDDING_BASE_URL, userId);
+  if (cfg.embeddingApiKey) {
+    await setSetting("embedding_apiKey", packApiKey(cfg.embeddingApiKey), userId);
+  }
   await setSetting("embedding_model", cfg.embeddingModel || DEFAULT_EMBEDDING_MODEL, userId);
   await setSetting("zvec_enabled", cfg.zvecEnabled ? "true" : "false", userId);
 }
@@ -133,22 +147,29 @@ export async function hasAgentConfig(userId: string): Promise<{
   baseUrl: string;
   model: string;
   keyPreview?: string;
+  embeddingBaseUrl?: string;
   embeddingModel?: string;
+  embeddingApiKeyPreview?: string;
   zvecEnabled?: boolean;
 }> {
   const dbApiKey = await getSetting("agent_apiKey", userId);
   const dbBaseUrl = await getSetting("agent_baseUrl", userId);
   const dbModel = await getSetting("agent_model", userId);
+  const dbEmbeddingBaseUrl = await getSetting("embedding_baseUrl", userId);
+  const dbEmbeddingApiKey = await getSetting("embedding_apiKey", userId);
   const dbEmbeddingModel = await getSetting("embedding_model", userId);
   const dbZvecEnabled = await getSetting("zvec_enabled", userId);
   if (dbApiKey && dbBaseUrl) {
     const apiKey = unpackApiKey(dbApiKey);
+    const embeddingApiKey = dbEmbeddingApiKey ? unpackApiKey(dbEmbeddingApiKey) : "";
     return {
       configured: !!apiKey,
       baseUrl: dbBaseUrl,
       model: dbModel || DEFAULT_MODEL,
       keyPreview: apiKey ? maskKey(apiKey) : undefined,
+      embeddingBaseUrl: dbEmbeddingBaseUrl || DEFAULT_EMBEDDING_BASE_URL,
       embeddingModel: dbEmbeddingModel || DEFAULT_EMBEDDING_MODEL,
+      embeddingApiKeyPreview: embeddingApiKey ? maskKey(embeddingApiKey) : undefined,
       zvecEnabled: dbZvecEnabled === "true",
     };
   }
@@ -156,7 +177,9 @@ export async function hasAgentConfig(userId: string): Promise<{
     configured: false,
     baseUrl: dbBaseUrl || DEFAULT_BASE_URL,
     model: dbModel || DEFAULT_MODEL,
+    embeddingBaseUrl: dbEmbeddingBaseUrl || DEFAULT_EMBEDDING_BASE_URL,
     embeddingModel: dbEmbeddingModel || DEFAULT_EMBEDDING_MODEL,
+    embeddingApiKeyPreview: undefined,
     zvecEnabled: dbZvecEnabled === "true",
   };
 }

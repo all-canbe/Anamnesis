@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyRequestAuth } from "@/lib/api-auth";
+import { getUserById } from "@/lib/turso";
 
 export async function GET(request: NextRequest) {
-  const username = await verifyRequestAuth(request);
-  if (!username) {
-    return NextResponse.json({ username: null }, { status: 401 });
+  const userId = await verifyRequestAuth(request);
+  if (!userId) {
+    return NextResponse.json({ email: null }, { status: 401 });
   }
-  return NextResponse.json({ username });
+  if (userId === "admin") {
+    return NextResponse.json({ email: "admin" });
+  }
+  try {
+    const user = await getUserById(userId);
+    return NextResponse.json({ email: user?.email || userId });
+  } catch {
+    return NextResponse.json({ email: userId });
+  }
 }

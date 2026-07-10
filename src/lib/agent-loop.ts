@@ -180,6 +180,18 @@ export async function executeAgentLoop(
     if (result.finishReason === "stop") {
       if (result.content) {
         ctx.messages.push({ role: "assistant", content: result.content });
+      } else if (ctx.recentToolCalls.length > 0) {
+        // 工具执行后 LLM 返回空内容 → 追加提示重试一次
+        const hasNudge = ctx.messages.some(
+          (m) => m.role === "system" && m.content.includes("请基于上面的工具执行结果"),
+        );
+        if (!hasNudge) {
+          ctx.messages.push({
+            role: "system",
+            content: "请基于上面的工具执行结果给用户一个回复。如果获取了网页内容，请总结或保存。",
+          });
+          continue;
+        }
       }
       return { type: "stop" };
     }

@@ -1,7 +1,8 @@
-import { getFilteredRecords, getPublicRecords } from "@/lib/content";
+import { getFilteredRecords, getPublicRecords, getPublicCategories, getCategories } from "@/lib/content";
 import { RecordsClient } from "./records-client";
 import { cookies } from "next/headers";
 import { jwtVerify } from "jose";
+import { redirect } from "next/navigation";
 
 async function getUsernameFromCookie(): Promise<string | null> {
   const cookieStore = await cookies();
@@ -24,6 +25,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
   if (isPublic) {
     const allRecords = await getPublicRecords(category === "all" ? undefined : category);
+    const categories = await getPublicCategories();
     const PER_PAGE = 5;
     const totalPages = Math.ceil(allRecords.length / PER_PAGE);
     const pageRecords = allRecords.slice((page - 1) * PER_PAGE, page * PER_PAGE);
@@ -32,16 +34,28 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         <RecordsClient
           records={pageRecords}
           allRecords={allRecords}
+          categories={categories}
           currentCategory={category}
           currentPage={page}
           totalPages={totalPages}
+          listMode="public"
         />
       </div>
     );
   }
 
+  // 未登录用户禁止访问私有列表
   const username = await getUsernameFromCookie();
-  const allRecords = await getFilteredRecords(category === "all" ? undefined : category, username || undefined);
+  if (!username) {
+    redirect("/?mode=public");
+  }
+  let allRecords;
+  if (category === "public") {
+    allRecords = await getFilteredRecords(undefined, username || undefined, "public");
+  } else {
+    allRecords = await getFilteredRecords(category === "all" ? undefined : category, username || undefined);
+  }
+  const categories = await getCategories(username || undefined);
   const PER_PAGE = 5;
   const totalPages = Math.ceil(allRecords.length / PER_PAGE);
   const pageRecords = allRecords.slice((page - 1) * PER_PAGE, page * PER_PAGE);
@@ -51,9 +65,11 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       <RecordsClient
         records={pageRecords}
         allRecords={allRecords}
+        categories={categories}
         currentCategory={category}
         currentPage={page}
         totalPages={totalPages}
+        listMode="private"
       />
     </div>
   );

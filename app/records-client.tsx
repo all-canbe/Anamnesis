@@ -3,9 +3,18 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { RecordMeta } from "@/lib/types";
-import { CATEGORIES, THUMB_COLORS } from "@/lib/types";
+import { THUMB_COLORS } from "@/lib/types";
 import { useLanguage } from "@/lib/language-context";
-import { SearchIcon, ArrowLeftIcon, ArrowRightIcon, BookOpenIcon, CategoryIcon, SparklesIcon, LoaderIcon } from "@/lib/icons";
+import { SearchIcon, ArrowLeftIcon, ArrowRightIcon, BookOpenIcon, CategoryIcon, SparklesIcon, LoaderIcon, CloseIcon } from "@/lib/icons";
+import { ContextMenu } from "./context-menu";
+import { removeRecord } from "../actions";
+
+interface CategoryItem {
+  key: string;
+  label: string;
+  label_en: string;
+  icon: string;
+}
 
 interface SearchResult {
   recordId: string;
@@ -15,29 +24,60 @@ interface SearchResult {
 }
 
 export function RecordsClient({
-  records, allRecords, currentCategory, currentPage, totalPages
+  records, allRecords, categories, currentCategory, currentPage, totalPages, listMode
 }: {
   records: RecordMeta[];
   allRecords: RecordMeta[];
+  categories: CategoryItem[];
   currentCategory: string;
   currentPage: number;
   totalPages: number;
+  listMode: "private" | "public";
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const observerRef = useRef<IntersectionObserver | null>(null);
   const debounceRef = useRef<number | null>(null);
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [semantic, setSemantic] = useState(false);
   const [semanticResults, setSemanticResults] = useState<SearchResult[]>([]);
   const [semanticLoading, setSemanticLoading] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; recordId: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
 
-  const categories = useMemo(() => ["all", ...Object.keys(CATEGORIES)], []);
+  // 过滤掉已删除的记录
+  const activeRecords = useMemo(() => records.filter(r => !deletedIds.has(r.id)), [records, deletedIds]);
+  const activeAllRecords = useMemo(() => allRecords.filter(r => !deletedIds.has(r.id)), [allRecords, deletedIds]);
+
+  // 分类 tab 列表
+  const categoryKeys = useMemo(() => {
+    const keys = ["all", ...categories.map(c => c.key)];
+    if (listMode === "private") {
+      return [keys[0], "public", ...keys.slice(1)];
+    }
+    return keys;
+  }, [categories, listMode]);
+
+  // 查找分类信息
+  const getCategoryInfo = useCallback((key: string): CategoryItem | undefined => {
+    return categories.find(c => c.key === key);
+  }, [categories]);
+
+  // 显示分类标签：公开模式且语言为英文时显示 label_en
+  const getCategoryLabel = useCallback((key: string): string => {
+    if (key === "all") return t("all");
+    if (key === "public") return t("recordsVisibilityPublic");
+    const info = getCategoryInfo(key);
+    if (!info) return key;
+    return (listMode === "public" && info.label_en && lang === "en") ? info.label_en : info.label;
+  }, [categories, listMode, lang, t, getCategoryInfo]);
 
   // Keyword filter (client-side, paginated)
   const filteredRecords = useMemo(() => {
-    let result = [...records];
+    let result = [...activeRecords];
     if (!semantic && searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter((r) =>
@@ -78,9 +118,9 @@ export function RecordsClient({
   // Resolve semantic results to full RecordMeta
   const semanticRecords = useMemo(() => {
     return semanticResults
-      .map((sr) => allRecords.find((r) => r.id === sr.recordId))
+      .map((sr) => activeAllRecords.find((r) => r.id === sr.recordId))
       .filter(Boolean) as RecordMeta[];
-  }, [semanticResults, allRecords]);
+  }, [semanticResults, activeAllRecords]);
 
   // Final display list
   const displayRecords = semantic ? semanticRecords : filteredRecords;
@@ -114,30 +154,52 @@ export function RecordsClient({
     router.push(`?${p.toString()}`);
   };
 
-  const totalCount = allRecords.length;
+  const totalCount = activeAllRecords.length;
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const r of allRecords) {
+    for (const r of activeAllRecords) {
       counts[r.category] = (counts[r.category] || 0) + 1;
     }
+    if (listMode === "private") {
+      counts["public"] = activeAllRecords.filter(r => r.visibility === "public").length;
+    }
     return counts;
-  }, [allRecords]);
+  }, [activeAllRecords, listMode]);
+
+  function handleContextMenu(e: React.MouseEvent, recordId: string) {
+    if (listMode !== "private") return;
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, recordId });
+  }
+
+  async function handleDelete(recordId: string) {
+    setDeleting(true);
+    try {
+      await removeRecord(recordId);
+      setDeletedIds(prev => new Set(prev).add(recordId));
+      setConfirmDelete(null);
+    } catch {
+      // 删除失败时保持弹窗，让用户可以重试
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <>
       <div className="category-tabs">
-        {categories.map((key) => {
-          const cat = CATEGORIES[key as keyof typeof CATEGORIES] || { label: "ALL", icon: "" };
+        {categoryKeys.map((key) => {
+          const cat = getCategoryInfo(key);
           const isActive = currentCategory === key;
-          const label = key === "all" ? t("all") : t(`category.${key}`);
+          const label = getCategoryLabel(key);
           const count = key === "all" ? totalCount : (categoryCounts[key] || 0);
           return (
             <button
-              key={key}
-              className={`category-tab${isActive ? " active" : ""}`}
-              onClick={() => updateParams("category", key)}
-            >
-              {cat.icon ? <CategoryIcon category={cat.icon} size={14} /> : null} {label}
+                key={key}
+                className={`category-tab${isActive ? " active" : ""}`}
+                onClick={() => updateParams("category", key)}
+              >
+                {cat?.icon && key !== "public" ? <CategoryIcon category={cat.icon} size={14} /> : null} {label}
               <span className="category-count">({count})</span>
             </button>
           );
@@ -149,14 +211,14 @@ export function RecordsClient({
         <input
           className="search-bar-input"
           type="text"
-          placeholder={semantic ? "Semantic search by meaning..." : "Search by title, summary, or category..."}
+          placeholder={semantic ? t("searchSemanticPlaceholder") : t("searchKeywordPlaceholder")}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
         <button
           className={`search-mode-btn${semantic ? " active" : ""}`}
           onClick={() => { setSemantic((v) => !v); setSemanticResults([]); }}
-          title={semantic ? "Switch to keyword search" : "Switch to semantic search"}
+          title={semantic ? t("searchSwitchKeyword") : t("searchSwitchSemantic")}
         >
           {semanticLoading ? <LoaderIcon size={14} /> : <SparklesIcon size={14} />}
         </button>
@@ -170,9 +232,9 @@ export function RecordsClient({
             </div>
             <p className="empty-state-text">
               {semantic && searchQuery.trim()
-                ? `No semantic matches for "${searchQuery}"`
+                ? t("searchNoSemanticMatch").replace("{query}", searchQuery)
                 : searchQuery
-                  ? `No records matching "${searchQuery}"`
+                  ? t("searchNoKeywordMatch").replace("{query}", searchQuery)
                   : t("noRecords")
               }
             </p>
@@ -180,19 +242,18 @@ export function RecordsClient({
         ) : (
           <>
             {displayRecords.map((r, i) => {
-            const cat = CATEGORIES[r.category as keyof typeof CATEGORIES] || {};
+            const cat = getCategoryInfo(r.category);
             const color = THUMB_COLORS[i % THUMB_COLORS.length];
-            const fmt = r.format === "md"
-              ? ' <span class="format-badge">MD</span>'
-              : ' <span class="format-badge">HTML</span>';
-            const visibilityLabel = r.visibility === "public" ? "Public" : "Private";
+            const formatLabel = r.format === "md" ? t("recordsFormatMD") : t("recordsFormatHTML");
+            const visibilityLabel = r.visibility === "public" ? t("recordsVisibilityPublic") : t("recordsVisibilityPrivate");
             const visibilityClass = r.visibility === "public" ? "visibility-badge public" : "visibility-badge private";
-            const catLabel = t(`category.${r.category}`);
+            const catLabel = cat ? (listMode === "public" && cat.label_en && lang === "en" ? cat.label_en : cat.label) : r.category;
             return (
               <article
                 key={r.id}
                 className="record-card animate-on-scroll"
                 onClick={() => router.push(`/records/${r.id}`)}
+                onContextMenu={(e) => handleContextMenu(e, r.id)}
               >
                 <div className="record-thumb" style={{ background: color }}>
                   <CategoryIcon category={r.category} size={22} />
@@ -201,7 +262,7 @@ export function RecordsClient({
                   <div className="record-meta stagger-text">
                     <span className="record-date">{r.date}</span>
                     <span className="category-badge">{catLabel}</span>
-                    <span dangerouslySetInnerHTML={{ __html: fmt }} />
+                    <span className="format-badge">{formatLabel}</span>
                     <span className={visibilityClass}>{visibilityLabel}</span>
                   </div>
                   <h2 className="record-title stagger-text">{r.title}</h2>
@@ -224,7 +285,7 @@ export function RecordsClient({
             disabled={currentPage <= 1}
             onClick={() => updateParams("page", String(currentPage - 1))}
           >
-            <ArrowLeftIcon size={12} /> {t("prev")}
+            <ArrowLeftIcon size={12} /> {t("prevPage")}
           </button>
           <span className="page-info">{currentPage} / {totalPages}</span>
           <button
@@ -232,8 +293,43 @@ export function RecordsClient({
             disabled={currentPage >= totalPages}
             onClick={() => updateParams("page", String(currentPage + 1))}
           >
-            {t("next")} <ArrowRightIcon size={12} />
+            {t("nextPage")} <ArrowRightIcon size={12} />
           </button>
+        </div>
+      )}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={[
+            { label: t("delete"), onClick: () => setConfirmDelete(contextMenu.recordId), danger: true },
+          ]}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {confirmDelete && (
+        <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
+          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="confirm-dialog-header">
+              <h3>{t("confirmDeleteTitle")}</h3>
+              <button className="modal-close icon-btn" onClick={() => setConfirmDelete(null)}>
+                <CloseIcon size={16} />
+              </button>
+            </div>
+            <div className="confirm-dialog-body">
+              <p>{t("confirmDeleteMessage")}</p>
+              <div className="confirm-dialog-actions">
+                <button className="btn btn-secondary" onClick={() => setConfirmDelete(null)}>
+                  {t("cancel")}
+                </button>
+                <button className="btn btn-danger" onClick={() => handleDelete(confirmDelete)} disabled={deleting}>
+                  {deleting ? t("deleting") : t("delete")}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </>

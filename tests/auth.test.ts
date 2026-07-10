@@ -4,46 +4,46 @@
  * Tests credential validation, token creation/verification with bcrypt + JWT.
  */
 import { describe, it, expect } from "vitest";
-import { validateCredentials, createToken, verifyToken } from "@/lib/auth";
+import { validateAdminLogin, createToken, verifyToken } from "@/lib/auth";
 
-describe("validateCredentials", () => {
+describe("validateAdminLogin", () => {
   it("should accept correct credentials", async () => {
-    const result = await validateCredentials("admin", "kb65");
+    const result = await validateAdminLogin("admin", "admin710");
     expect(result).toBe(true);
   });
 
   it("should reject wrong password", async () => {
-    const result = await validateCredentials("admin", "wrong");
+    const result = await validateAdminLogin("admin", "wrong");
     expect(result).toBe(false);
   });
 
   it("should reject wrong username", async () => {
-    const result = await validateCredentials("root", "kb65");
+    const result = await validateAdminLogin("root", "admin710");
     expect(result).toBe(false);
   });
 
   it("should reject both wrong", async () => {
-    const result = await validateCredentials("root", "wrong");
+    const result = await validateAdminLogin("root", "wrong");
     expect(result).toBe(false);
   });
 
   it("should reject empty username", async () => {
-    const result = await validateCredentials("", "kb65");
+    const result = await validateAdminLogin("", "admin710");
     expect(result).toBe(false);
   });
 
   it("should reject empty password", async () => {
-    const result = await validateCredentials("admin", "");
+    const result = await validateAdminLogin("admin", "");
     expect(result).toBe(false);
   });
 
   it("should be case-sensitive for username", async () => {
-    const result = await validateCredentials("Admin", "kb65");
+    const result = await validateAdminLogin("Admin", "admin710");
     expect(result).toBe(false);
   });
 
   it("should be case-sensitive for password", async () => {
-    const result = await validateCredentials("admin", "KB65");
+    const result = await validateAdminLogin("admin", "KB65");
     expect(result).toBe(false);
   });
 });

@@ -9,19 +9,66 @@ import { NavBar } from "./nav-bar";
 import { SettingsDialog } from "./settings-dialog";
 import { ImportDialog } from "./import-dialog";
 import { LoginDialog } from "./login-dialog";
+import { useLanguage } from "@/lib/language-context";
 
 const VIEW_KEY = "zhiyi-view-mode";
 const THEME_KEY = "zhiyi-theme";
+const AGENT_CONFIG_CACHE_KEY = "zhiyi-agent-config";
 
-export function Shell({ children }: { children: React.ReactNode }) {
+export interface CachedAgentConfig {
+  configured: boolean;
+  baseUrl: string;
+  model: string;
+  keyPreview?: string;
+  embeddingBaseUrl?: string;
+  embeddingModel?: string;
+  zvecEnabled?: boolean;
+}
+
+export function Shell({
+  children,
+  initialViewMode = "list",
+}: {
+  children: React.ReactNode;
+  initialViewMode?: "list" | "grid" | "compact";
+}) {
+  const { t } = useLanguage();
   const [leftOpen, setLeftOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(true);
-  const [viewMode, setViewMode] = useState<"list" | "grid" | "compact">("list");
+  const [viewMode, setViewMode] = useState<"list" | "grid" | "compact">(initialViewMode);
   const [listMode, setListMode] = useState<"private" | "public">("private");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
-  const [username, setUsername] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [settingsConfig, setSettingsConfig] = useState<CachedAgentConfig | null>(() => {
+    try {
+      const raw = localStorage.getItem(AGENT_CONFIG_CACHE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return null;
+  });
+
+  /** 从服务端加载配置并缓存到 localStorage（不含完整 API Key） */
+  const loadSettingsConfig = useCallback(async () => {
+    try {
+      const res = await fetch("/api/settings", { credentials: "same-origin" });
+      if (res.ok) {
+        const data = await res.json();
+        const config: CachedAgentConfig = {
+          configured: data.configured || false,
+          baseUrl: data.baseUrl || "",
+          model: data.model || "",
+          keyPreview: data.keyPreview,
+          embeddingBaseUrl: data.embeddingBaseUrl,
+          embeddingModel: data.embeddingModel,
+          zvecEnabled: data.zvecEnabled,
+        };
+        setSettingsConfig(config);
+        try { localStorage.setItem(AGENT_CONFIG_CACHE_KEY, JSON.stringify(config)); } catch {}
+      }
+    } catch {}
+  }, []);
 
   // 初始化：检查登录状态
   const checkAuth = useCallback(async () => {
@@ -29,33 +76,30 @@ export function Shell({ children }: { children: React.ReactNode }) {
       const res = await fetch("/api/auth/me", { credentials: "same-origin" });
       if (res.ok) {
         const data = await res.json();
-        if (data.username) {
-          setUsername(data.username);
+        if (data.email) {
+          setUserEmail(data.email);
+          loadSettingsConfig();
           return;
         }
       }
-      // 开发环境自动登录
-      if (process.env.NODE_ENV === "development") {
-        const devRes = await fetch("/api/auth/dev-login", {
-          method: "POST",
-          credentials: "same-origin",
-        });
-        if (devRes.ok) {
-          const devData = await devRes.json();
-          setUsername(devData.username);
-        }
-      }
     } catch {}
-  }, []);
+  }, [loadSettingsConfig]);
 
   useEffect(() => { checkAuth(); }, [checkAuth]);
+
+  // 未登录时强制切换到公开列表
+  useEffect(() => {
+    if (!userEmail) {
+      setListMode("public");
+    }
+  }, [userEmail]);
 
   // 登出
   async function handleLogout() {
     try {
       await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
     } catch {}
-    setUsername(null);
+    setUserEmail(null);
   }
 
   // Keyboard shortcuts
@@ -81,8 +125,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const saved = localStorage.getItem(VIEW_KEY) as "list" | "grid" | "compact" | null;
-    if (saved) setViewMode(saved);
-  }, []);
+    if (saved && saved !== initialViewMode) setViewMode(saved);
+  }, [initialViewMode]);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem(THEME_KEY) as "light" | "dark" | "system" | null;
@@ -97,6 +141,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
   function handleViewMode(mode: "list" | "grid" | "compact") {
     setViewMode(mode);
     localStorage.setItem(VIEW_KEY, mode);
+    try {
+      document.cookie = `zhiyi-view-mode=${mode};path=/;max-age=31536000`;
+    } catch {}
   }
 
   return (
@@ -104,11 +151,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <header className="site-header" id="site-header">
         <div className="header-inner">
           <div className="header-left">
-            <a href="/" className="site-logo">知忆</a>
+            <a href="/" className="site-logo">{t("siteTitle")}</a>
           </div>
           <div className="header-right">
             <nav className="site-nav">
-              <a href="/" className="nav-link active" data-page="records">Records</a>
+              <a href="/" className="nav-link active" data-page="records">{t("records")}</a>
             </nav>
             <LangToggle />
           </div>
@@ -124,7 +171,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           onOpenLeftPanel={() => setLeftOpen((v) => !v)}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenImport={() => setImportOpen(true)}
-          username={username}
+          username={userEmail}
           onOpenLogin={() => setLoginOpen(true)}
           onLogout={handleLogout}
         />
@@ -142,15 +189,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <FooterBar />
         </main>
 
-        <AgentSidebar open={agentOpen} onToggle={() => setAgentOpen((v) => !v)} />
+        <AgentSidebar open={agentOpen} onToggle={() => setAgentOpen((v) => !v)} settingsConfig={settingsConfig} />
       </div>
 
-      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} initialConfig={settingsConfig} />
       <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
       <LoginDialog
         open={loginOpen}
         onClose={() => setLoginOpen(false)}
-        onLoginSuccess={(name) => setUsername(name)}
+        onLoginSuccess={(email) => setUserEmail(email)}
       />
     </div>
   );

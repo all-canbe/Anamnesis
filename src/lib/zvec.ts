@@ -1,5 +1,5 @@
 import { getRecords, getRecord } from "./content";
-import { embedText, embedBatch, cosineSimilarity, setEmbeddingModel } from "./embedding";
+import { embedText, embedBatch, cosineSimilarity, setEmbeddingModel, setApiKey, setEmbeddingBaseUrl } from "./embedding";
 import { getAgentConfig } from "./agent-config";
 import {
   ZVecCreateAndOpen,
@@ -62,7 +62,9 @@ async function resolveMode(userId?: string): Promise<boolean> {
     const config = await getAgentConfig(userId);
     useRealZvec = config.zvecEnabled;
     if (useRealZvec) {
+      setEmbeddingBaseUrl(config.embeddingBaseUrl);
       setEmbeddingModel(config.embeddingModel);
+      setApiKey(config.embeddingApiKey);
     }
   } catch {
     useRealZvec = false;
@@ -355,8 +357,13 @@ export async function findSimilar(recordId: string, userId?: string, limit = 3):
       topk: limit + 1, // +1 以排除自身
     });
 
+    const seen = new Set<string>();
     return (results || [])
-      .filter((r: any) => r.id !== recordId)
+      .filter((r: any) => {
+        if (r.id === recordId || seen.has(r.id)) return false;
+        seen.add(r.id);
+        return true;
+      })
       .slice(0, limit)
       .map((r: any) => ({
         recordId: r.id,
