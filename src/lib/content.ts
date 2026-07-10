@@ -60,6 +60,7 @@ export async function getRecords(userId?: string, visibility?: string): Promise<
       return await tursoGetPublicRecords(visibility === "public" ? undefined : undefined);
     } catch {}
   }
+  // 回退到本地文件
   const raw = fs.readFileSync(INDEX_PATH, "utf-8");
   const records = JSON.parse(raw) as RecordMeta[];
   if (visibility) {
@@ -335,5 +336,15 @@ export async function getPublicRecords(category?: string): Promise<RecordMeta[]>
       return await tursoGetPublicRecords(category);
     } catch {}
   }
-  return [];
+  // 回退到本地文件（本地文件均为公开记录）
+  try {
+    const raw = fs.readFileSync(INDEX_PATH, "utf-8");
+    const records = JSON.parse(raw) as RecordMeta[];
+    if (category && category !== "all") {
+      return records.filter((r) => r.category === category);
+    }
+    return records;
+  } catch {
+    return [];
+  }
 }

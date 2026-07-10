@@ -81,9 +81,12 @@ export async function POST(request: NextRequest) {
       { ok: false, error: "邮箱或密码错误" },
       { status: 401 }
     );
-  } catch {
+  } catch (e) {
+    const msg = e instanceof Error && e.message.includes("JWT_SECRET")
+      ? "服务器认证配置错误，请联系管理员（JWT_SECRET 未配置）"
+      : "请求处理失败";
     return NextResponse.json(
-      { ok: false, error: "请求处理失败" },
+      { ok: false, error: msg },
       { status: 400 }
     );
   }
