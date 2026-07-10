@@ -57,7 +57,8 @@ export async function getRecords(userId?: string, visibility?: string): Promise<
   // 未登录用户只能看公开记录
   if (isTursoConfigured() && !userId) {
     try {
-      return await tursoGetPublicRecords(visibility === "public" ? undefined : undefined);
+      const records = await tursoGetPublicRecords(visibility === "public" ? undefined : undefined);
+      if (records.length > 0) return records;
     } catch {}
   }
   // 回退到本地文件
@@ -333,10 +334,11 @@ export async function getPublicRecords(category?: string): Promise<RecordMeta[]>
   await ensureTurso();
   if (isTursoConfigured()) {
     try {
-      return await tursoGetPublicRecords(category);
+      const records = await tursoGetPublicRecords(category);
+      if (records.length > 0) return records;
     } catch {}
   }
-  // 回退到本地文件（本地文件均为公开记录）
+  // Turso 未配置或无公开记录时，回退到本地文件
   try {
     const raw = fs.readFileSync(INDEX_PATH, "utf-8");
     const records = JSON.parse(raw) as RecordMeta[];
