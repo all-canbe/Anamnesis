@@ -116,12 +116,13 @@ export function NavBar({ activeMode, listMode, onModeChange, onListModeChange, o
           </div>
         )}
         <button
-            className="nav-bar-btn"
-            onClick={onOpenSettings}
-            title={t("navSettings")}
+            className={`nav-bar-btn${!username ? " disabled" : ""}`}
+            onClick={() => username ? onOpenSettings() : undefined}
+            title={username ? t("navSettings") : t("loginRequired")}
+            disabled={!username}
           >
             <SettingsIcon size={16} />
-            <span className="nav-bar-tooltip">{t("navSettings")}</span>
+            <span className="nav-bar-tooltip">{username ? t("navSettings") : t("loginRequired")}</span>
           </button>
       </div>
     </nav>
