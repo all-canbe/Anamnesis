@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { LeftPanel } from "./left-panel";
 import { AgentSidebar } from "./agent-sidebar";
 import { FooterBar } from "./footer-bar";
@@ -36,7 +36,7 @@ export function Shell({
   const [leftOpen, setLeftOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(true);
   const [viewMode, setViewMode] = useState<"list" | "grid" | "compact">(initialViewMode);
-  const [listMode, setListMode] = useState<"private" | "public">("private");
+  const [listMode, setListMode] = useState<"private" | "public">("public");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -49,50 +49,37 @@ export function Shell({
     return null;
   });
 
-  /** 从服务端加载配置并缓存到 localStorage（不含完整 API Key） */
-  const loadSettingsConfig = useCallback(async () => {
-    try {
-      const res = await fetch("/api/settings", { credentials: "same-origin" });
-      if (res.ok) {
-        const data = await res.json();
-        const config: CachedAgentConfig = {
-          configured: data.configured || false,
-          baseUrl: data.baseUrl || "",
-          model: data.model || "",
-          keyPreview: data.keyPreview,
-          embeddingBaseUrl: data.embeddingBaseUrl,
-          embeddingModel: data.embeddingModel,
-          zvecEnabled: data.zvecEnabled,
-        };
-        setSettingsConfig(config);
-        try { localStorage.setItem(AGENT_CONFIG_CACHE_KEY, JSON.stringify(config)); } catch {}
-      }
-    } catch {}
-  }, []);
-
-  // 初始化：检查登录状态
-  const checkAuth = useCallback(async () => {
-    try {
-      const res = await fetch("/api/auth/me", { credentials: "same-origin" });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.email) {
-          setUserEmail(data.email);
-          loadSettingsConfig();
-          return;
-        }
-      }
-    } catch {}
-  }, [loadSettingsConfig]);
-
-  useEffect(() => { checkAuth(); }, [checkAuth]);
-
-  // 未登录时强制切换到公开列表
+  // 初始化：检查登录状态 + 加载配置
   useEffect(() => {
-    if (!userEmail) {
-      setListMode("public");
-    }
-  }, [userEmail]);
+    fetch("/api/auth/me", { credentials: "same-origin" })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.email) {
+          setUserEmail(data.email);
+          setListMode("private");
+          return fetch("/api/settings", { credentials: "same-origin" });
+        }
+        return null;
+      })
+      .then(settingsRes => {
+        if (settingsRes?.ok) {
+          settingsRes.json().then(data => {
+            const config: CachedAgentConfig = {
+              configured: data.configured || false,
+              baseUrl: data.baseUrl || "",
+              model: data.model || "",
+              keyPreview: data.keyPreview,
+              embeddingBaseUrl: data.embeddingBaseUrl,
+              embeddingModel: data.embeddingModel,
+              zvecEnabled: data.zvecEnabled,
+            };
+            setSettingsConfig(config);
+            try { localStorage.setItem(AGENT_CONFIG_CACHE_KEY, JSON.stringify(config)); } catch {}
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // 登出
   async function handleLogout() {
@@ -100,6 +87,7 @@ export function Shell({
       await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
     } catch {}
     setUserEmail(null);
+    setListMode("public");
   }
 
   // Keyboard shortcuts
@@ -197,7 +185,7 @@ export function Shell({
       <LoginDialog
         open={loginOpen}
         onClose={() => setLoginOpen(false)}
-        onLoginSuccess={(email) => setUserEmail(email)}
+        onLoginSuccess={(email) => { setUserEmail(email); setListMode("private"); }}
       />
     </div>
   );
