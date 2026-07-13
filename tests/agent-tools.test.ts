@@ -40,13 +40,15 @@ vi.mock("@/lib/content", () => ({
     { id: "k2", title: "Public Record", date: "2026-01-02", category: "frontend", summary: "A public record", visibility: "public" },
   ]),
   writeRecord: vi.fn(async () => {}),
+  deleteRecord: vi.fn(async () => {}),
   generateId: vi.fn(async () => "k3"),
   getTags: vi.fn(async () => ({
     frontend: { label: "Frontend", icon: "frontend", color: "#3b82f6" },
     backend: { label: "Backend", icon: "backend", color: "#10b981" },
+    daily: { label: "日报", icon: "ai", color: "#3b82f6" },
   })),
-  addTag: vi.fn(async () => {}),
-  deleteTag: vi.fn(async () => {}),
+  addCategory: vi.fn(async () => {}),
+  deleteCategory: vi.fn(async () => {}),
 }));
 
 vi.mock("@/lib/web-search", () => ({
@@ -98,9 +100,9 @@ describe("Agent Tools", () => {
   });
 
   describe("Tool definitions", () => {
-    it("should define exactly 14 tools", async () => {
+    it("should define exactly 16 tools", async () => {
       const { tools } = await import("@/lib/agent-tools");
-      expect(tools).toHaveLength(14);
+      expect(tools).toHaveLength(16);
     });
 
     it("should have all expected tool names", async () => {
@@ -117,6 +119,8 @@ describe("Agent Tools", () => {
       expect(names).toContain("fetch_skill");
       expect(names).toContain("import_skill");
       expect(names).toContain("write_record");
+      expect(names).toContain("update_record");
+      expect(names).toContain("delete_record");
       expect(names).toContain("list_categories");
       expect(names).toContain("add_category");
       expect(names).toContain("delete_category");
@@ -152,6 +156,10 @@ describe("Agent Tools", () => {
       expect(getTool("import_skill")!.parameters.required).toContain("url");
       // ask_kb requires question
       expect(getTool("ask_kb")!.parameters.required).toContain("question");
+      // update_record requires record_id
+      expect(getTool("update_record")!.parameters.required).toContain("record_id");
+      // delete_record requires record_id
+      expect(getTool("delete_record")!.parameters.required).toContain("record_id");
     });
   });
 
@@ -178,7 +186,7 @@ describe("Agent Tools", () => {
     it("should return OpenAI function calling format", async () => {
       const { getToolDefinitions } = await import("@/lib/agent-tools");
       const defs = getToolDefinitions();
-      expect(defs).toHaveLength(14);
+      expect(defs).toHaveLength(16);
       for (const def of defs) {
         expect(def.type).toBe("function");
         expect(def.function).toHaveProperty("name");
@@ -465,6 +473,152 @@ describe("Agent Tools", () => {
 
       expect(result.status).toBe("error");
       expect(result.error).toContain("title and content are required");
+    });
+
+    it("should accept user-created category (e.g. 'daily' for 日报)", async () => {
+      const { getTool, setAgentUserId } = await import("@/lib/agent-tools");
+      setAgentUserId("test-user");
+      const { writeRecord } = await import("@/lib/content");
+      const tool = getTool("write_record")!;
+      const result = await tool.execute({
+        title: "日报记录",
+        content: "# 日报\n\n今天的工作内容。",
+        category: "daily",
+      });
+
+      expect(result.status).toBe("completed");
+      expect(result.data.category).toBe("daily");
+      expect(writeRecord).toHaveBeenCalled();
+    });
+
+    it("should fallback to 'other' for non-existent category", async () => {
+      const { getTool, setAgentUserId } = await import("@/lib/agent-tools");
+      setAgentUserId("test-user");
+      const tool = getTool("write_record")!;
+      const result = await tool.execute({
+        title: "Test Record",
+        content: "content",
+        category: "nonexistent_category",
+      });
+
+      expect(result.status).toBe("completed");
+      expect(result.data.category).toBe("other");
+    });
+  });
+
+  describe("update_record tool", () => {
+    it("should update category of an existing record", async () => {
+      const { getTool, setAgentUserId } = await import("@/lib/agent-tools");
+      setAgentUserId("test-user");
+      const { writeRecord } = await import("@/lib/content");
+      const tool = getTool("update_record")!;
+      const result = await tool.execute({
+        record_id: "k1",
+        category: "daily",
+      });
+
+      expect(result.status).toBe("completed");
+      expect(result.data.id).toBe("k1");
+      expect(result.data.category).toBe("daily");
+      expect(result.data.title).toBe("Test");
+      expect(writeRecord).toHaveBeenCalled();
+    });
+
+    it("should update title of an existing record", async () => {
+      const { getTool, setAgentUserId } = await import("@/lib/agent-tools");
+      setAgentUserId("test-user");
+      const tool = getTool("update_record")!;
+      const result = await tool.execute({
+        record_id: "k1",
+        title: "Updated Title",
+      });
+
+      expect(result.status).toBe("completed");
+      expect(result.data.title).toBe("Updated Title");
+      expect(result.data.category).toBe("ai");
+    });
+
+    it("should update visibility of an existing record", async () => {
+      const { getTool, setAgentUserId } = await import("@/lib/agent-tools");
+      setAgentUserId("test-user");
+      const tool = getTool("update_record")!;
+      const result = await tool.execute({
+        record_id: "k1",
+        visibility: "public",
+      });
+
+      expect(result.status).toBe("completed");
+      expect(result.data.visibility).toBe("public");
+    });
+
+    it("should update content of an existing record", async () => {
+      const { getTool, setAgentUserId } = await import("@/lib/agent-tools");
+      setAgentUserId("test-user");
+      const { writeRecord } = await import("@/lib/content");
+      const tool = getTool("update_record")!;
+      const result = await tool.execute({
+        record_id: "k1",
+        content: "# Updated content",
+      });
+
+      expect(result.status).toBe("completed");
+      expect(writeRecord).toHaveBeenCalled();
+      const callArgs = (writeRecord as any).mock.calls[0];
+      expect(callArgs[1]).toBe("# Updated content");
+    });
+
+    it("should return error for non-existent record", async () => {
+      const { getTool } = await import("@/lib/agent-tools");
+      const tool = getTool("update_record")!;
+      const result = await tool.execute({
+        record_id: "k999",
+        category: "daily",
+      });
+
+      expect(result.status).toBe("error");
+      expect(result.error).toContain("not found");
+    });
+
+    it("should return error when record_id is missing", async () => {
+      const { getTool } = await import("@/lib/agent-tools");
+      const tool = getTool("update_record")!;
+      const result = await tool.execute({ category: "daily" });
+
+      expect(result.status).toBe("error");
+      expect(result.error).toContain("record_id is required");
+    });
+  });
+
+  describe("delete_record tool", () => {
+    it("should delete an existing record", async () => {
+      const { getTool, setAgentUserId } = await import("@/lib/agent-tools");
+      setAgentUserId("test-user");
+      const { deleteRecord } = await import("@/lib/content");
+      const tool = getTool("delete_record")!;
+      const result = await tool.execute({ record_id: "k1" });
+
+      expect(result.status).toBe("completed");
+      expect(result.data.id).toBe("k1");
+      expect(result.data.title).toBe("Test");
+      expect(deleteRecord).toHaveBeenCalledWith("k1", "test-user");
+    });
+
+    it("should return error for non-existent record", async () => {
+      const { getTool } = await import("@/lib/agent-tools");
+      const tool = getTool("delete_record")!;
+      const result = await tool.execute({ record_id: "k999" });
+
+      expect(result.status).toBe("error");
+      expect(result.error).toContain("not found");
+    });
+
+    it("should return error when record_id is missing", async () => {
+      const { getTool } = await import("@/lib/agent-tools");
+      const tool = getTool("delete_record")!;
+      const result = await tool.execute({});
+
+      expect(result.status).toBe("error");
+      expect(result.error).toContain("record_id is required");
     });
   });
 

@@ -1,4 +1,4 @@
-import { getRecords, getRecord, getPublicRecords, writeRecord, generateId, getTags, addTag, deleteTag } from "./content";
+import { getRecords, getRecord, getPublicRecords, writeRecord, deleteRecord, generateId, getTags, addCategory, deleteCategory } from "./content";
 import { slugify } from "./utils";
 import type { RecordMeta, ContentFormat } from "./types";
 import { searchSkills, searchWeb } from "./web-search";
@@ -437,7 +437,7 @@ export const tools: Tool[] = [
       properties: {
         title: { type: "string", description: "Title of the record" },
         content: { type: "string", description: "Full content (Markdown format). Can be long and detailed." },
-        category: { type: "string", description: "Category for the record. Available: frontend, backend, ai, reading, devops, design, other. Default is 'other'. Use list_categories tool to see all existing categories including user-created ones." },
+        category: { type: "string", description: "Category key for the record. Use list_categories tool to see all available categories including user-created ones. Default is 'other'." },
         summary: { type: "string", description: "Brief summary (optional, auto-generated if empty)" },
         visibility: { type: "string", description: "Visibility: private (only you can see) or public (everyone can see). Default is private." },
       },
@@ -450,8 +450,11 @@ export const tools: Tool[] = [
           return { status: "error", data: null, error: "title and content are required" };
         }
 
-        const validCategories = ["frontend", "backend", "ai", "reading", "devops", "design", "other"];
-        const cat = validCategories.includes(category) ? category : "other";
+        // 动态校验分类：支持内置分类和用户创建的自定义分类
+        const tags = await getTags(getEffectiveUserId());
+        const builtInCategories = ["frontend", "backend", "ai", "reading", "devops", "design", "other"];
+        const allValidCategories = new Set([...builtInCategories, ...Object.keys(tags)]);
+        const cat = category && allValidCategories.has(category) ? category : "other";
         const validVisibility = ["private", "public"];
         const vis = validVisibility.includes(visibility as string) ? visibility : "private";
 
@@ -494,6 +497,116 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: "update_record",
+    description: "Update an existing knowledge record. Can update title, category, summary, visibility, or content. Only provided fields will be updated; omitted fields keep their original values. Use this when the user asks to modify, change, or move an existing record to another category.",
+    parameters: {
+      type: "object",
+      properties: {
+        record_id: { type: "string", description: "ID of the record to update" },
+        title: { type: "string", description: "New title (optional)" },
+        category: { type: "string", description: "New category key. Use list_categories tool to see available categories." },
+        summary: { type: "string", description: "New summary (optional)" },
+        visibility: { type: "string", description: "New visibility: private or public (optional)" },
+        content: { type: "string", description: "New full content in Markdown (optional). Only provide if you want to replace the entire content." },
+      },
+      required: ["record_id"],
+    },
+    async execute(args) {
+      try {
+        const { record_id, title, category, summary, visibility, content } = args;
+        if (!record_id) {
+          return { status: "error", data: null, error: "record_id is required" };
+        }
+
+        // 获取现有记录
+        const existing = await getRecord(record_id, getEffectiveUserId());
+        if (!existing) {
+          return { status: "error", data: null, error: `Record '${record_id}' not found` };
+        }
+
+        // 动态校验新分类
+        let cat = existing.meta.category;
+        if (category) {
+          const tags = await getTags(getEffectiveUserId());
+          const builtInCategories = ["frontend", "backend", "ai", "reading", "devops", "design", "other"];
+          const allValidCategories = new Set([...builtInCategories, ...Object.keys(tags)]);
+          cat = allValidCategories.has(category) ? category : "other";
+        }
+
+        // 验证 visibility
+        const validVisibility = ["private", "public"];
+        const vis = visibility
+          ? (validVisibility.includes(visibility as string) ? visibility : existing.meta.visibility)
+          : existing.meta.visibility;
+
+        // 合并字段：仅更新提供的字段，其余保留原值
+        const newMeta: RecordMeta = {
+          id: existing.meta.id,
+          slug: existing.meta.slug,
+          title: title || existing.meta.title,
+          date: existing.meta.date,
+          category: cat as RecordMeta["category"],
+          summary: summary || existing.meta.summary,
+          format: existing.meta.format,
+          visibility: vis as "private" | "public",
+          attachments: existing.meta.attachments,
+        };
+
+        const newContent = content !== undefined ? content : existing.content;
+
+        await writeRecord(newMeta, newContent, getEffectiveUserId());
+        // 更新向量索引
+        addToIndex(record_id, getEffectiveUserId()).catch(() => {});
+
+        return { status: "completed", data: {
+          id: newMeta.id,
+          title: newMeta.title,
+          slug: newMeta.slug,
+          category: newMeta.category,
+          summary: newMeta.summary,
+          visibility: newMeta.visibility,
+          message: `Record "${newMeta.title}" updated successfully. Category is now "${newMeta.category}".`,
+        } };
+      } catch (err: any) {
+        return { status: "error", data: null, error: err.message };
+      }
+    },
+  },
+  {
+    name: "delete_record",
+    description: "Delete a knowledge record by ID. IMPORTANT: This action cannot be undone. Always ask the user for confirmation before deleting. Use this when the user asks to remove or delete a record.",
+    parameters: {
+      type: "object",
+      properties: {
+        record_id: { type: "string", description: "ID of the record to delete" },
+      },
+      required: ["record_id"],
+    },
+    async execute(args) {
+      try {
+        const { record_id } = args;
+        if (!record_id) {
+          return { status: "error", data: null, error: "record_id is required" };
+        }
+
+        // 先检查记录是否存在
+        const existing = await getRecord(record_id, getEffectiveUserId());
+        if (!existing) {
+          return { status: "error", data: null, error: `Record '${record_id}' not found` };
+        }
+
+        await deleteRecord(record_id, getEffectiveUserId());
+        return { status: "completed", data: {
+          id: record_id,
+          title: existing.meta.title,
+          message: `Record "${existing.meta.title}" (ID: ${record_id}) deleted successfully.`,
+        } };
+      } catch (err: any) {
+        return { status: "error", data: null, error: err.message };
+      }
+    },
+  },
+  {
     name: "list_categories",
     description: "List all categories and tags in the knowledge base. Use this to see what categories are available before creating a record with write_record.",
     parameters: { type: "object", properties: {}, required: [] },
@@ -527,7 +640,8 @@ export const tools: Tool[] = [
     async execute(args) {
       try {
         const { key, label, icon, color } = args;
-        await addTag(key, label, icon || "ai", color || "#3b82f6", getEffectiveUserId());
+        // 使用 addCategory 创建正式分类（is_category=1），确保在 UI 分类列表中可见
+        await addCategory(key, label, "", icon || "ai", color || "#3b82f6", false, getEffectiveUserId());
         return { status: "completed", data: {
           key, label,
           message: `Category "${label}" (key: ${key}) added successfully.`,
@@ -554,7 +668,8 @@ export const tools: Tool[] = [
         if (builtInCategories.includes(key)) {
           return { status: "error", data: null, error: `Cannot delete built-in category "${key}". Built-in categories are: ${builtInCategories.join(", ")}` };
         }
-        await deleteTag(key, getEffectiveUserId());
+        // 使用 deleteCategory 删除正式分类（is_category=1）
+        await deleteCategory(key, getEffectiveUserId());
         return { status: "completed", data: {
           key,
           message: `Category "${key}" deleted successfully.`,
