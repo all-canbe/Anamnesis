@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isEmailConfigured, sendVerificationCode } from "@/lib/email";
-import { saveVerificationCode, getUserByEmail, saveVerificationCodeWithInvalidate } from "@/lib/turso";
+import { saveVerificationCodeWithInvalidate } from "@/lib/turso";
 import { verifyCaptchaToken } from "@/lib/captcha";
 import { checkRateLimit, clearRateLimit } from "@/lib/rate-limit";
 

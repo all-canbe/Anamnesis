@@ -52,3 +52,6 @@ next-env.d.ts
 PROJECT_BLUEPRINT.md
 QA-REPORT.md
 deliverables/
+
+# Local npm cache
+npm-cache/

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { CloseIcon } from "@/lib/icons";
 import { useLanguage } from "@/lib/language-context";
 
@@ -101,22 +101,21 @@ export function LoginDialog({ open, onClose, onLoginSuccess }: LoginDialogProps)
         setSliderPos(maxX);
         setSliderProgress(100);
         setSliderDone(true);
-        // 如果令牌已过期，重新获取
-        if (!captchaToken) {
-          fetchCaptchaToken()
-            .then((token) => setCaptchaToken(token))
-            .catch(() => resetSlider());
-        }
+        // 滑动完成后 always 刷新令牌，确保发送验证码/注册时令牌未过期
+        setCaptchaLoading(true);
+        fetchCaptchaToken()
+          .then((token) => setCaptchaToken(token))
+          .catch(() => resetSlider())
+          .finally(() => setCaptchaLoading(false));
         cleanup();
       }
     }
 
     function onEnd() {
+      if (!dragging.current) { cleanup(); return; }
       dragging.current = false;
-      if (!sliderDone) {
-        setSliderPos(0);
-        setSliderProgress(0);
-      }
+      setSliderPos(0);
+      setSliderProgress(0);
       cleanup();
     }
 
@@ -135,7 +134,11 @@ export function LoginDialog({ open, onClose, onLoginSuccess }: LoginDialogProps)
 
   // 发送验证码
   async function handleSendCode() {
-    if (!email || !captchaToken) {
+    if (!email) {
+      setError(t("loginErrorEmpty"));
+      return;
+    }
+    if (!sliderDone || !captchaToken || captchaLoading) {
       setError(t("sliderCaptcha"));
       return;
     }
@@ -170,8 +173,12 @@ export function LoginDialog({ open, onClose, onLoginSuccess }: LoginDialogProps)
 
   // 登录
   async function handleLogin() {
-    if (!account || !password || !captchaToken) {
+    if (!account || !password) {
       setError(t("loginErrorEmpty"));
+      return;
+    }
+    if (!sliderDone || !captchaToken || captchaLoading) {
+      setError(t("sliderCaptcha"));
       return;
     }
     setLoading(true);
@@ -200,8 +207,12 @@ export function LoginDialog({ open, onClose, onLoginSuccess }: LoginDialogProps)
 
   // 注册
   async function handleRegister() {
-    if (!email || !password || !code || !captchaToken) {
+    if (!email || !password || !code) {
       setError(t("loginErrorEmpty"));
+      return;
+    }
+    if (!sliderDone || !captchaToken || captchaLoading) {
+      setError(t("sliderCaptcha"));
       return;
     }
     if (password.length < 6) {
@@ -335,7 +346,7 @@ export function LoginDialog({ open, onClose, onLoginSuccess }: LoginDialogProps)
                   <button
                     className="btn btn-sm btn-secondary"
                     onClick={handleSendCode}
-                    disabled={sendingCode || codeCountdown > 0}
+                    disabled={sendingCode || codeCountdown > 0 || !sliderDone || captchaLoading}
                   >
                     {sendingCode ? t("sendingCode") : codeCountdown > 0 ? `${codeCountdown}s` : t("sendCode")}
                   </button>

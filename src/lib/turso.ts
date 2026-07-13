@@ -46,33 +46,6 @@ export async function query(sql: string, args: any[] = []): Promise<any[]> {
   return result?.results?.rows || [];
 }
 
-/** 执行写操作并返回受影响行数 */
-export async function queryExec(sql: string, args: any[] = []): Promise<number> {
-  const config = getConfig();
-  if (!config) throw new Error("Turso not configured");
-
-  const httpUrl = config.url.replace(/^libsql:\/\//, "https://");
-  const res = await fetch(httpUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ statements: [{ q: sql, params: args }] }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Turso query failed: ${res.status} ${res.statusText}`);
-  }
-
-  const data = await res.json();
-  const result = data?.[0];
-  if (result?.error) {
-    throw new Error(`Turso query error: ${result.error.message || JSON.stringify(result.error)}`);
-  }
-  return result?.results?.rows_affected ?? 0;
-}
-
 export async function initTursoSchema(): Promise<void> {
   const createRecords = `CREATE TABLE IF NOT EXISTS records (
     id TEXT PRIMARY KEY,
@@ -429,11 +402,12 @@ export async function saveVerificationCodeWithInvalidate(email: string, code: st
 
 export async function verifyCode(email: string, code: string): Promise<boolean> {
   // 原子更新：仅当 used=0 且未过期时才标记为已使用
-  const affected = await queryExec(
-    "UPDATE verification_codes SET used = 1 WHERE email = ? AND code = ? AND used = 0 AND expires_at > datetime('now')",
+  // 使用 RETURNING 避免依赖不同 HTTP API 的 rows_affected 字段命名
+  const rows = await query(
+    "UPDATE verification_codes SET used = 1 WHERE email = ? AND code = ? AND used = 0 AND expires_at > datetime('now') RETURNING id",
     [email.toLowerCase(), code]
   );
-  return affected > 0;
+  return rows.length > 0;
 }
 
 /** 清理过期验证码（可定期调用） */
