@@ -180,18 +180,21 @@ export async function executeAgentLoop(
     if (result.finishReason === "stop") {
       if (result.content) {
         ctx.messages.push({ role: "assistant", content: result.content });
-      } else if (ctx.recentToolCalls.length > 0) {
-        // 工具执行后 LLM 返回空内容 → 追加提示重试一次
+      } else {
+        // LLM 返回空内容 → 追加提示重试一次（覆盖首轮和工具后两种场景）
         const hasNudge = ctx.messages.some(
-          (m) => m.role === "system" && m.content.includes("请基于上面的工具执行结果"),
+          (m) => m.role === "system" && m.content.includes("给用户一个回复"),
         );
         if (!hasNudge) {
           ctx.messages.push({
             role: "system",
-            content: "请基于上面的工具执行结果给用户一个回复。如果获取了网页内容，请总结或保存。",
+            content: ctx.recentToolCalls.length > 0
+              ? "请基于上面的工具执行结果给用户一个回复。如果获取了网页内容，请总结或保存。"
+              : "请给用户一个回复。如果用户的问题需要工具辅助，请调用合适的工具；如果可以直接回答，请直接回复。",
           });
           continue;
         }
+        return { type: "error", message: "LLM 返回了空响应，请重试或检查模型配置。" };
       }
       return { type: "stop" };
     }

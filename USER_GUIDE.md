@@ -129,10 +129,10 @@ MyKB 是一个个人知识库管理系统，支持文章管理、AI 对话、网
 | `SMTP_HOST` | SMTP 服务器地址（默认 `smtp.qq.com`） |
 | `SMTP_PORT` | SMTP 端口（默认 `465`） |
 | `EMAIL_FROM` | 发件人显示名称（默认使用 SMTP_USER） |
-| `QINIU_R2_ACCESS_KEY` | 七牛云 R2 Access Key |
-| `QINIU_R2_SECRET_KEY` | 七牛云 R2 Secret Key |
-| `QINIU_R2_BUCKET` | 七牛云 R2 存储空间名 |
-| `QINIU_R2_DOMAIN` | 七牛云 R2 自定义域名 |
+| `QINIU_ACCESS_KEY` | 七牛云 Access Key |
+| `QINIU_SECRET_KEY` | 七牛云 Secret Key |
+| `QINIU_BUCKET` | 七牛云存储空间名 |
+| `QINIU_DOMAIN` | 七牛云自定义域名 |
 
 ### Vercel 部署步骤
 1. 在 Vercel 导入 GitHub 仓库

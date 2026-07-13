@@ -1,4 +1,4 @@
-import { getRecord, getFilteredRecords, getCategories } from "@/lib/content";
+import { getRecord, getFilteredRecords, getCategories, getPublicRecords } from "@/lib/content";
 import { findSimilar } from "@/lib/zvec";
 import { THUMB_COLORS } from "@/lib/types";
 import { mdToHtml } from "@/lib/md-to-html";
@@ -24,7 +24,13 @@ async function getUsernameFromCookie(): Promise<string | null> {
 export default async function RecordDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const username = await getUsernameFromCookie();
-  const record = await getRecord(id, username || undefined);
+  let record = await getRecord(id, username || undefined);
+  // 已登录用户查看他人公开文章时，回退到公开查询（不传 userId）
+  let viewingOthersPublic = false;
+  if (!record && username) {
+    record = await getRecord(id, undefined);
+    viewingOthersPublic = !!record;
+  }
   if (!record) notFound();
 
   // 权限隔离：未登录用户只能看公开记录
@@ -35,9 +41,10 @@ export default async function RecordDetailPage({ params }: { params: Promise<{ i
   const categories = await getCategories(username || undefined);
   const catInfo = categories.find(c => c.key === record.meta.category);
   // 未登录用户只看公开记录列表，登录用户看自己的记录
-  const allRecords = username
+  // 登录用户查看他人公开文章时，用公开记录列表做上下篇导航
+  const allRecords = (username && !viewingOthersPublic)
     ? await getFilteredRecords(undefined, username)
-    : await getFilteredRecords(undefined, undefined, "public");
+    : await getPublicRecords();
   const idx = allRecords.findIndex((r: RecordMeta) => r.id === id);
   const prev = idx > 0 ? allRecords[idx - 1] : null;
   const next = idx < allRecords.length - 1 ? allRecords[idx + 1] : null;
@@ -75,12 +82,24 @@ export default async function RecordDetailPage({ params }: { params: Promise<{ i
       {attachments.length > 0 && (
         <div className="detail-attachments">
           <div className="detail-attachments-title">Attachments ({attachments.length})</div>
-          {attachments.map((att, i) => (
-            <div key={i} className="detail-attachment-item">
-              <span className="detail-attachment-path">{att.path}</span>
-              <span className="detail-attachment-type">{att.type}</span>
-            </div>
-          ))}
+          {attachments.map((att, i) => {
+            const isUrl = att.type === "url" || att.type === "image";
+            const href = isUrl ? att.content : `/api/records/${id}/attachments/${i}`;
+            return (
+              <a
+                key={i}
+                href={href}
+                className="detail-attachment-item"
+                target={isUrl ? "_blank" : undefined}
+                rel={isUrl ? "noopener noreferrer" : undefined}
+                download={!isUrl ? att.path : undefined}
+              >
+                <span className="detail-attachment-path">{att.path}</span>
+                <span className="detail-attachment-type">{att.type}</span>
+                <span className="detail-attachment-action">{isUrl ? "↗" : "↓"}</span>
+              </a>
+            );
+          })}
         </div>
       )}
 

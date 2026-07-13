@@ -440,12 +440,25 @@ export const tools: Tool[] = [
         category: { type: "string", description: "Category key for the record. Use list_categories tool to see all available categories including user-created ones. Default is 'other'." },
         summary: { type: "string", description: "Brief summary (optional, auto-generated if empty)" },
         visibility: { type: "string", description: "Visibility: private (only you can see) or public (everyone can see). Default is private." },
+        attachments: {
+          type: "array",
+          description: "Optional attachments for the record. Each item: {path: filename, content: text content or URL, type: 'md'|'txt'|'url'|'image'}. Use for supplementary files, source code, image URLs, etc. Text attachments are stored inline in the database (no external dependency).",
+          items: {
+            type: "object",
+            properties: {
+              path: { type: "string", description: "Filename or path (e.g. 'README.md', 'images/diagram.png')" },
+              content: { type: "string", description: "Text content for text files, or URL for images/external resources" },
+              type: { type: "string", description: "Attachment type: 'md', 'txt', 'url', or 'image'" },
+            },
+            required: ["path", "content", "type"],
+          },
+        },
       },
       required: ["title", "content"],
     },
     async execute(args) {
       try {
-        const { title, content, category, summary, visibility = "private" } = args;
+        const { title, content, category, summary, visibility = "private", attachments } = args;
         if (!title || !content) {
           return { status: "error", data: null, error: "title and content are required" };
         }
@@ -477,6 +490,13 @@ export const tools: Tool[] = [
           summary: autoSummary,
           format: "md" as ContentFormat,
           visibility: vis as "private" | "public",
+          attachments: Array.isArray(attachments)
+            ? attachments.map((a: any) => ({
+                path: String(a?.path || ""),
+                content: String(a?.content || ""),
+                type: String(a?.type || "txt"),
+              }))
+            : [],
         };
 
         await writeRecord(meta, content, getEffectiveUserId());
@@ -489,7 +509,8 @@ export const tools: Tool[] = [
           category: meta.category,
           summary: meta.summary,
           visibility: meta.visibility,
-          message: `Record "${title}" created successfully with ID ${id} (visibility: ${vis}). The user can now find it in their knowledge base.`,
+          attachments: meta.attachments.length,
+          message: `Record "${title}" created successfully with ID ${id} (visibility: ${vis}, attachments: ${meta.attachments.length}). The user can now find it in their knowledge base.`,
         } };
       } catch (err: any) {
         return { status: "error", data: null, error: err.message };
@@ -508,12 +529,25 @@ export const tools: Tool[] = [
         summary: { type: "string", description: "New summary (optional)" },
         visibility: { type: "string", description: "New visibility: private or public (optional)" },
         content: { type: "string", description: "New full content in Markdown (optional). Only provide if you want to replace the entire content." },
+        attachments: {
+          type: "array",
+          description: "New attachments list (optional). If provided, replaces ALL existing attachments. If omitted, existing attachments are preserved. Each item: {path, content, type}.",
+          items: {
+            type: "object",
+            properties: {
+              path: { type: "string", description: "Filename or path (e.g. 'README.md', 'images/diagram.png')" },
+              content: { type: "string", description: "Text content for text files, or URL for images/external resources" },
+              type: { type: "string", description: "Attachment type: 'md', 'txt', 'url', or 'image'" },
+            },
+            required: ["path", "content", "type"],
+          },
+        },
       },
       required: ["record_id"],
     },
     async execute(args) {
       try {
-        const { record_id, title, category, summary, visibility, content } = args;
+        const { record_id, title, category, summary, visibility, content, attachments } = args;
         if (!record_id) {
           return { status: "error", data: null, error: "record_id is required" };
         }
@@ -539,6 +573,15 @@ export const tools: Tool[] = [
           ? (validVisibility.includes(visibility as string) ? visibility : existing.meta.visibility)
           : existing.meta.visibility;
 
+        // 附件处理：提供则替换全部，未提供则保留原值
+        const newAttachments = Array.isArray(attachments)
+          ? attachments.map((a: any) => ({
+              path: String(a?.path || ""),
+              content: String(a?.content || ""),
+              type: String(a?.type || "txt"),
+            }))
+          : existing.meta.attachments;
+
         // 合并字段：仅更新提供的字段，其余保留原值
         const newMeta: RecordMeta = {
           id: existing.meta.id,
@@ -549,7 +592,7 @@ export const tools: Tool[] = [
           summary: summary || existing.meta.summary,
           format: existing.meta.format,
           visibility: vis as "private" | "public",
-          attachments: existing.meta.attachments,
+          attachments: newAttachments,
         };
 
         const newContent = content !== undefined ? content : existing.content;
@@ -565,6 +608,7 @@ export const tools: Tool[] = [
           category: newMeta.category,
           summary: newMeta.summary,
           visibility: newMeta.visibility,
+          attachments: newMeta.attachments?.length || 0,
           message: `Record "${newMeta.title}" updated successfully. Category is now "${newMeta.category}".`,
         } };
       } catch (err: any) {

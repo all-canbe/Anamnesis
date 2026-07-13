@@ -504,6 +504,45 @@ describe("Agent Tools", () => {
       expect(result.status).toBe("completed");
       expect(result.data.category).toBe("other");
     });
+
+    it("should save attachments when provided", async () => {
+      const { getTool, setAgentUserId } = await import("@/lib/agent-tools");
+      setAgentUserId("test-user");
+      const { writeRecord } = await import("@/lib/content");
+      const tool = getTool("write_record")!;
+      const result = await tool.execute({
+        title: "Record with Attachments",
+        content: "# Main content",
+        attachments: [
+          { path: "README.md", content: "# Readme", type: "md" },
+          { path: "diagram.png", content: "https://example.com/diagram.png", type: "image" },
+        ],
+      });
+
+      expect(result.status).toBe("completed");
+      expect(result.data.attachments).toBe(2);
+      expect(writeRecord).toHaveBeenCalled();
+      const callArgs = (writeRecord as any).mock.calls[0];
+      expect(callArgs[0].attachments).toHaveLength(2);
+      expect(callArgs[0].attachments[0]).toEqual({ path: "README.md", content: "# Readme", type: "md" });
+      expect(callArgs[0].attachments[1]).toEqual({ path: "diagram.png", content: "https://example.com/diagram.png", type: "image" });
+    });
+
+    it("should set empty attachments array when not provided", async () => {
+      const { getTool, setAgentUserId } = await import("@/lib/agent-tools");
+      setAgentUserId("test-user");
+      const { writeRecord } = await import("@/lib/content");
+      const tool = getTool("write_record")!;
+      const result = await tool.execute({
+        title: "No Attachments",
+        content: "content",
+      });
+
+      expect(result.status).toBe("completed");
+      expect(result.data.attachments).toBe(0);
+      const callArgs = (writeRecord as any).mock.calls[0];
+      expect(callArgs[0].attachments).toEqual([]);
+    });
   });
 
   describe("update_record tool", () => {
@@ -586,6 +625,43 @@ describe("Agent Tools", () => {
 
       expect(result.status).toBe("error");
       expect(result.error).toContain("record_id is required");
+    });
+
+    it("should replace attachments when provided", async () => {
+      const { getTool, setAgentUserId } = await import("@/lib/agent-tools");
+      setAgentUserId("test-user");
+      const { writeRecord } = await import("@/lib/content");
+      const tool = getTool("update_record")!;
+      // k2 has existing attachment: [{ path: "skill/readme.md", content: "# Skill", type: "md" }]
+      const result = await tool.execute({
+        record_id: "k2",
+        attachments: [
+          { path: "new-file.md", content: "# New file", type: "md" },
+          { path: "image.png", content: "https://example.com/img.png", type: "image" },
+        ],
+      });
+
+      expect(result.status).toBe("completed");
+      expect(result.data.attachments).toBe(2);
+      const callArgs = (writeRecord as any).mock.calls[0];
+      expect(callArgs[0].attachments).toHaveLength(2);
+      expect(callArgs[0].attachments[0]).toEqual({ path: "new-file.md", content: "# New file", type: "md" });
+    });
+
+    it("should preserve existing attachments when not provided", async () => {
+      const { getTool, setAgentUserId } = await import("@/lib/agent-tools");
+      setAgentUserId("test-user");
+      const { writeRecord } = await import("@/lib/content");
+      const tool = getTool("update_record")!;
+      // k2 has existing attachment: [{ path: "skill/readme.md", content: "# Skill", type: "md" }]
+      const result = await tool.execute({
+        record_id: "k2",
+        title: "Updated Title Only",
+      });
+
+      expect(result.status).toBe("completed");
+      const callArgs = (writeRecord as any).mock.calls[0];
+      expect(callArgs[0].attachments).toEqual([{ path: "skill/readme.md", content: "# Skill", type: "md" }]);
     });
   });
 

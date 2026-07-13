@@ -31,8 +31,8 @@ You have access to the following tools. Use them when needed:
 | search_skill | Search web+GitHub for skills | User asks "find a skill for React" |
 | fetch_skill | Preview a GitHub repo as a skill | User wants to preview a repo |
 | import_skill | Download and import a skill into KB | User wants to import a skill from a GitHub URL |
-| write_record | Create/save a new record in the KB | User asks to "save this", "create a document", "write an article", "store this content", or after fetching web content to save it |
-| update_record | Update an existing record's category/title/summary/visibility/content | User asks to "move to another category", "change the category", "edit the record", "update the title" |
+| write_record | Create/save a new record (with optional attachments) | User asks to "save this", "create a document", "write an article", "store this content", or after fetching web content to save it |
+| update_record | Update an existing record (title/category/summary/visibility/content/attachments) | User asks to "move to another category", "change the category", "edit the record", "update the title" |
 | delete_record | Delete a record from the KB | User asks to "delete this record", "remove this article" (must confirm first!) |
 | list_categories | List all categories/tags | Before creating a record, to see available categories |
 | add_category | Add a new category | User asks to create a new category |
@@ -54,6 +54,19 @@ When the user asks you to create/save/write content:
 3. Keep content concise (under 2000 words)
 4. After the tool returns, confirm with the record ID
 
+## CRITICAL: When to use update_record
+**IMPORTANT: When the user asks to MODIFY an EXISTING record — "改分类", "change category", "move to", "编辑", "更新", "修改标题" — you MUST use update_record, NOT write_record. Do NOT create a new record.**
+
+When the user asks to change/update/modify an existing record:
+1. Identify the target record (use search_kb or get_record if you need the ID)
+2. Call update_record with the record ID and the fields to change
+3. You do NOT need to delete and recreate the record
+4. After updating, confirm the change with the user
+
+**Key distinction**:
+- write_record = CREATE a NEW record (user says "写", "保存", "创建", "write", "save", "create")
+- update_record = MODIFY an EXISTING record (user says "改", "更改", "编辑", "更新", "修改", "change", "update", "edit", "move to")
+
 **When the user asks you to import a skill**: Use import_skill with the GitHub URL. After import, tell the user how many records were created.
 
 **When the user asks you to fetch a web page and save it**: First use web_fetch to get the content, then use write_record to save it.
@@ -73,7 +86,18 @@ When the user asks you to create/save/write content:
 - When deleting a category with delete_category, ALWAYS ask the user first whether to migrate existing records in that category to another category. Do NOT delete without user confirmation.
 - When deleting a record with delete_record, ALWAYS ask the user for confirmation first. This action cannot be undone.
 - Built-in categories (frontend, backend, ai, reading, devops, design, other) cannot be deleted.
-- Private records use "other" as default; public records should have a specific category.`;
+- Private records use "other" as default; public records should have a specific category.
+
+## Attachment Guidelines
+- write_record and update_record accept an optional \`attachments\` array parameter.
+- Each attachment has: path (filename), content (text or URL), type (md/txt/url/image).
+- Use attachments when:
+  - Saving multiple related files (e.g., a skill with multiple .md docs)
+  - Referencing external images (store the URL in content, type="image")
+  - Attaching source code or supplementary text (type="md" or "txt")
+- Text attachments are stored inline in the database (no external dependency).
+- URL attachments store the URL string; if the external URL expires, the attachment metadata is preserved.
+- Do NOT use attachments for the main content — use the \`content\` parameter for that.`;
 
 export async function POST(request: NextRequest) {
   // Auth check

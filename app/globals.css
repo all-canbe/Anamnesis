@@ -4063,9 +4063,16 @@ img {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 0;
+  padding: 4px 8px;
   font-size: 12px;
   color: var(--color-text);
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.detail-attachment-item:hover {
+  background: var(--color-bg);
 }
 
 .detail-attachment-path {
@@ -4082,4 +4089,15 @@ img {
   border-radius: 4px;
   color: var(--color-text-muted);
   text-transform: uppercase;
+}
+
+.detail-attachment-action {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-left: auto;
+  padding: 0 4px;
+  opacity: 0.6;
+}
+.detail-attachment-item:hover .detail-attachment-action {
+  opacity: 1;
 }
