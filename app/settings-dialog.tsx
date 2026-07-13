@@ -14,8 +14,8 @@ interface SettingsDialogProps {
 const THEME_KEY = "zhiyi-theme";
 const AGENT_CONFIG_CACHE_KEY = "zhiyi-agent-config";
 
-/** 向量搜索功能开关；线上部署可设置 NEXT_PUBLIC_ENABLE_VECTOR_SEARCH=false 灰显该区块 */
-const VECTOR_SEARCH_ENABLED = process.env.NEXT_PUBLIC_ENABLE_VECTOR_SEARCH !== "false";
+/** 向量搜索功能开关默认值；服务端标志返回后会覆盖此值 */
+const DEFAULT_VECTOR_SEARCH_ENABLED = process.env.NEXT_PUBLIC_ENABLE_VECTOR_SEARCH !== "false";
 
 export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogProps) {
   const { t } = useLanguage();
@@ -28,8 +28,9 @@ export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogP
   const [keyPreview, setKeyPreview] = useState(initialConfig?.keyPreview || "");
   const [keyFocused, setKeyFocused] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [vectorSearchEnabled, setVectorSearchEnabled] = useState(DEFAULT_VECTOR_SEARCH_ENABLED);
   const [zvecEnabled, setZvecEnabled] = useState(
-    VECTOR_SEARCH_ENABLED ? (initialConfig?.zvecEnabled || false) : false
+    vectorSearchEnabled ? (initialConfig?.zvecEnabled || false) : false
   );
   const [embeddingBaseUrl, setEmbeddingBaseUrl] = useState(initialConfig?.embeddingBaseUrl || "");
   const [embeddingApiKey, setEmbeddingApiKey] = useState("");
@@ -51,7 +52,12 @@ export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogP
       setKeyPreview(data.keyPreview || "");
       setApiKey("");
       setKeyFocused(false);
-      setZvecEnabled(VECTOR_SEARCH_ENABLED ? (data.zvecEnabled || false) : false);
+      const serverFlag =
+        typeof data.vectorSearchEnabled === "boolean"
+          ? data.vectorSearchEnabled
+          : DEFAULT_VECTOR_SEARCH_ENABLED;
+      setVectorSearchEnabled(serverFlag);
+      setZvecEnabled(serverFlag ? (data.zvecEnabled || false) : false);
       setEmbeddingBaseUrl(data.embeddingBaseUrl || "");
       setEmbeddingModel(data.embeddingModel || "BAAI/bge-m3");
       // 同步更新缓存
@@ -62,7 +68,7 @@ export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogP
         keyPreview: data.keyPreview,
         embeddingBaseUrl: data.embeddingBaseUrl,
         embeddingModel: data.embeddingModel,
-        zvecEnabled: VECTOR_SEARCH_ENABLED ? data.zvecEnabled : false,
+        zvecEnabled: serverFlag ? data.zvecEnabled : false,
       };
       try { localStorage.setItem(AGENT_CONFIG_CACHE_KEY, JSON.stringify(config)); } catch {}
       return true;
@@ -120,7 +126,7 @@ export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogP
         model,
         embeddingBaseUrl,
         embeddingModel,
-        zvecEnabled: VECTOR_SEARCH_ENABLED ? zvecEnabled : false,
+        zvecEnabled: vectorSearchEnabled ? zvecEnabled : false,
       };
       if (apiKey) body.apiKey = apiKey;
       if (embeddingApiKey) body.embeddingApiKey = embeddingApiKey;
@@ -145,7 +151,7 @@ export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogP
           keyPreview: newPreview,
           embeddingBaseUrl,
           embeddingModel,
-          zvecEnabled: VECTOR_SEARCH_ENABLED ? zvecEnabled : false,
+          zvecEnabled: vectorSearchEnabled ? zvecEnabled : false,
         };
         try { localStorage.setItem(AGENT_CONFIG_CACHE_KEY, JSON.stringify(config)); } catch {}
       }
@@ -265,12 +271,12 @@ export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogP
           {/* Vector Search */}
           <div
             className="settings-group"
-            style={{ opacity: VECTOR_SEARCH_ENABLED ? 1 : 0.5 }}
+            style={{ opacity: vectorSearchEnabled ? 1 : 0.5 }}
           >
             <div className="settings-group-title">
               <DatabaseIcon size={12} /> {t("settingsVectorSearch")}
             </div>
-            {!VECTOR_SEARCH_ENABLED && (
+            {!vectorSearchEnabled && (
               <div className="settings-row-desc" style={{ marginBottom: 8 }}>
                 {t("settingsVectorSearchDisabled")}
               </div>
@@ -287,17 +293,24 @@ export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogP
                   </span>
                 </span>
               </div>
-              <label className="settings-checkbox-row" style={{ marginLeft: "auto" }}>
+              <label
+                className="settings-checkbox-row"
+                style={{
+                  marginLeft: "auto",
+                  pointerEvents: vectorSearchEnabled ? "auto" : "none",
+                  cursor: vectorSearchEnabled ? "pointer" : "not-allowed",
+                }}
+              >
                 <input
                   type="checkbox"
                   checked={zvecEnabled}
                   onChange={(e) => setZvecEnabled(e.target.checked)}
-                  disabled={!VECTOR_SEARCH_ENABLED}
+                  disabled={!vectorSearchEnabled}
                 />
               </label>
             </div>
 
-            {zvecEnabled && VECTOR_SEARCH_ENABLED && (
+            {zvecEnabled && vectorSearchEnabled && (
               <>
                 <div className="settings-row">
                   <div className="settings-row-label">{t("settingsBaseUrl")}</div>

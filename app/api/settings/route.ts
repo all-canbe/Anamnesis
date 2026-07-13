@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     const cfg = await hasAgentConfig(username);
     return NextResponse.json({
       ...cfg,
+      vectorSearchEnabled: VECTOR_SEARCH_ENABLED,
       zvecEnabled: VECTOR_SEARCH_ENABLED ? cfg.zvecEnabled : false,
     });
   } catch {

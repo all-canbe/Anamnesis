@@ -62,10 +62,15 @@ export async function initTursoSchema(): Promise<void> {
   )`;
 
   const createTags = `CREATE TABLE IF NOT EXISTS tags (
-    key TEXT PRIMARY KEY,
+    key TEXT NOT NULL,
     label TEXT NOT NULL,
     icon TEXT NOT NULL DEFAULT 'ai',
-    color TEXT NOT NULL DEFAULT '#3b82f6'
+    color TEXT NOT NULL DEFAULT '#3b82f6',
+    user_id TEXT NOT NULL DEFAULT '',
+    is_public INTEGER NOT NULL DEFAULT 0,
+    is_category INTEGER NOT NULL DEFAULT 0,
+    label_en TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (key, user_id)
   )`;
 
   const createSettings = `CREATE TABLE IF NOT EXISTS settings (
@@ -130,6 +135,29 @@ export async function initTursoSchema(): Promise<void> {
   // 迁移：tags 增加 is_category 和 label_en 列（动态分类系统）
   try { await query("ALTER TABLE tags ADD COLUMN is_category INTEGER NOT NULL DEFAULT 0"); } catch {}
   try { await query("ALTER TABLE tags ADD COLUMN label_en TEXT NOT NULL DEFAULT ''"); } catch {}
+
+  // 迁移：将旧版单列主键 tags 表升级为复合主键 (key, user_id)，支持每个用户拥有同 key 的私有分类
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS tags_new (
+        key TEXT NOT NULL,
+        label TEXT NOT NULL,
+        icon TEXT NOT NULL DEFAULT 'ai',
+        color TEXT NOT NULL DEFAULT '#3b82f6',
+        user_id TEXT NOT NULL DEFAULT '',
+        is_public INTEGER NOT NULL DEFAULT 0,
+        is_category INTEGER NOT NULL DEFAULT 0,
+        label_en TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (key, user_id)
+      )
+    `);
+    await query(`
+      INSERT OR IGNORE INTO tags_new (key, label, icon, color, user_id, is_public, is_category, label_en)
+      SELECT key, label, icon, color, user_id, is_public, is_category, label_en FROM tags
+    `);
+    await query("DROP TABLE tags");
+    await query("ALTER TABLE tags_new RENAME TO tags");
+  } catch {}
 
   // 迁移：users 表增加 username 列
   try { await query("ALTER TABLE users ADD COLUMN username TEXT NOT NULL DEFAULT ''"); } catch {}
@@ -250,25 +278,25 @@ export async function tursoGetTags(userId?: string): Promise<Record<string, { la
 }
 
 export async function tursoAddTag(key: string, label: string, icon: string, color = "#3b82f6", userId?: string): Promise<void> {
-  // 检查 key 是否已被公开标签占用
-  const existing = await query("SELECT is_public, user_id FROM tags WHERE key = ?", [key]);
-  if (existing.length > 0 && existing[0][0] === 1 && existing[0][1] !== userId) {
+  // 检查 key 是否已被其他用户的公开标签占用
+  const existing = await query("SELECT is_public, user_id FROM tags WHERE key = ? AND user_id != ? LIMIT 1", [key, userId || "admin"]);
+  if (existing.length > 0 && existing[0][0] === 1) {
     throw new Error("无法修改公开标签");
   }
   await query(
-    "INSERT INTO tags (key, label, icon, color, user_id, is_public) VALUES (?, ?, ?, ?, ?, 0) ON CONFLICT(key) DO UPDATE SET label = excluded.label, icon = excluded.icon, color = excluded.color",
+    "INSERT INTO tags (key, label, icon, color, user_id, is_public) VALUES (?, ?, ?, ?, ?, 0) ON CONFLICT(key, user_id) DO UPDATE SET label = excluded.label, icon = excluded.icon, color = excluded.color",
     [key, label, icon, color, userId || "admin"]
   );
 }
 
 export async function tursoDeleteTag(key: string, userId?: string): Promise<void> {
   // 保护公开分类不被误删
-  const rows = await query("SELECT is_public, is_category FROM tags WHERE key = ?", [key]);
+  const rows = await query("SELECT is_public, is_category FROM tags WHERE key = ? AND user_id = ?", [key, userId || "admin"]);
   if (rows.length > 0 && rows[0][0] === 1 && rows[0][1] === 1) return;
   if (userId) {
     await query("DELETE FROM tags WHERE key = ? AND user_id = ? AND is_public = 0", [key, userId]);
   } else {
-    await query("DELETE FROM tags WHERE key = ?", [key]);
+    await query("DELETE FROM tags WHERE key = ? AND user_id = ? AND is_public = 0", [key, userId || "admin"]);
   }
 }
 
@@ -284,10 +312,19 @@ export interface CategoryRow {
 }
 
 export async function tursoGetCategories(userId?: string): Promise<CategoryRow[]> {
-  const rows = userId
+  let rows = userId
     ? await query("SELECT key, label, label_en, icon, color, is_public FROM tags WHERE is_category = 1 AND user_id = ? ORDER BY key", [userId])
     : await query("SELECT key, label, label_en, icon, color, is_public FROM tags WHERE is_category = 1 AND is_public = 1 ORDER BY key");
-  return rows.map((row: any) => ({
+
+  // 老用户或创建失败时，若私有分类为空则自动兜底创建「其他」
+  if (userId && rows.length === 0) {
+    try {
+      await tursoAddCategory("other", "其他", "Other", "other", "#6b7280", false, userId);
+      rows = await query("SELECT key, label, label_en, icon, color, is_public FROM tags WHERE is_category = 1 AND user_id = ? ORDER BY key", [userId]);
+    } catch {}
+  }
+
+  const categories = rows.map((row: any) => ({
     key: row[0],
     label: row[1],
     label_en: row[2] || "",
@@ -295,23 +332,32 @@ export async function tursoGetCategories(userId?: string): Promise<CategoryRow[]
     color: row[4] || "#3b82f6",
     isPublic: !!row[5],
   }));
+
+  // 把「其他/other」固定排在最后
+  categories.sort((a: CategoryRow, b: CategoryRow) => {
+    if (a.key === "other") return 1;
+    if (b.key === "other") return -1;
+    return a.key.localeCompare(b.key);
+  });
+
+  return categories;
 }
 
 export async function tursoAddCategory(key: string, label: string, label_en: string, icon: string, color: string, isPublic: boolean, userId?: string): Promise<void> {
   // 检查 key 是否已被其他用户的公开分类占用
-  const existing = await query("SELECT is_public, user_id FROM tags WHERE key = ?", [key]);
-  if (existing.length > 0 && existing[0][0] === 1 && existing[0][1] !== userId) {
+  const existing = await query("SELECT is_public, user_id FROM tags WHERE key = ? AND user_id != ? LIMIT 1", [key, userId || "admin"]);
+  if (existing.length > 0 && existing[0][0] === 1) {
     throw new Error("无法修改公开分类");
   }
   await query(
-    "INSERT INTO tags (key, label, label_en, icon, color, user_id, is_public, is_category) VALUES (?, ?, ?, ?, ?, ?, ?, 1) ON CONFLICT(key) DO UPDATE SET label = excluded.label, label_en = excluded.label_en, icon = excluded.icon, color = excluded.color",
+    "INSERT INTO tags (key, label, label_en, icon, color, user_id, is_public, is_category) VALUES (?, ?, ?, ?, ?, ?, ?, 1) ON CONFLICT(key, user_id) DO UPDATE SET label = excluded.label, label_en = excluded.label_en, icon = excluded.icon, color = excluded.color",
     [key, label, label_en || "", icon || key, color || "#3b82f6", userId || "admin", isPublic ? 1 : 0]
   );
 }
 
 export async function tursoDeleteCategory(key: string, userId?: string): Promise<void> {
   // 保护公开分类不被删除
-  const rows = await query("SELECT is_public FROM tags WHERE key = ? AND is_category = 1", [key]);
+  const rows = await query("SELECT is_public FROM tags WHERE key = ? AND is_category = 1 AND user_id = ?", [key, userId || "admin"]);
   if (rows.length > 0 && rows[0][0] === 1) return;
   if (userId) {
     await query("DELETE FROM tags WHERE key = ? AND user_id = ? AND is_category = 1", [key, userId]);
