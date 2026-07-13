@@ -51,7 +51,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   }
   let allRecords;
   if (category === "public") {
-    allRecords = await getFilteredRecords(undefined, username || undefined, "public");
+    allRecords = await getPublicRecords();
   } else {
     allRecords = await getFilteredRecords(category === "all" ? undefined : category, username || undefined);
   }

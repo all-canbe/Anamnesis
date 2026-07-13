@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { RecordMeta } from "@/lib/types";
 import { THUMB_COLORS } from "@/lib/types";
 import { useLanguage } from "@/lib/language-context";
-import { SearchIcon, ArrowLeftIcon, ArrowRightIcon, BookOpenIcon, CategoryIcon, SparklesIcon, LoaderIcon, CloseIcon } from "@/lib/icons";
+import { SearchIcon, ArrowLeftIcon, ArrowRightIcon, BookOpenIcon, CategoryIcon, SparklesIcon, LoaderIcon, CloseIcon, UserIcon } from "@/lib/icons";
 import { ContextMenu } from "./context-menu";
 import { removeRecord } from "../actions";
 
@@ -266,6 +266,11 @@ export function RecordsClient({
                     <span className={visibilityClass}>{visibilityLabel}</span>
                   </div>
                   <h2 className="record-title stagger-text">{r.title}</h2>
+                  {listMode === "public" && r.author && (
+                    <div className="record-author stagger-text">
+                      <UserIcon size={12} /> {r.author}
+                    </div>
+                  )}
                   <p className="record-summary stagger-text">{r.summary}</p>
                   <span className="record-detail-btn stagger-text">
                     {t("detail")} <ArrowRightIcon size={12} />

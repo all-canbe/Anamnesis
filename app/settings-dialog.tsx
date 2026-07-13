@@ -14,6 +14,9 @@ interface SettingsDialogProps {
 const THEME_KEY = "zhiyi-theme";
 const AGENT_CONFIG_CACHE_KEY = "zhiyi-agent-config";
 
+/** 向量搜索功能开关；线上部署可设置 NEXT_PUBLIC_ENABLE_VECTOR_SEARCH=false 灰显该区块 */
+const VECTOR_SEARCH_ENABLED = process.env.NEXT_PUBLIC_ENABLE_VECTOR_SEARCH !== "false";
+
 export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogProps) {
   const { t } = useLanguage();
   const [theme, setThemeState] = useState<"light" | "dark" | "system">("light");
@@ -25,7 +28,9 @@ export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogP
   const [keyPreview, setKeyPreview] = useState(initialConfig?.keyPreview || "");
   const [keyFocused, setKeyFocused] = useState(false);
   const [loadError, setLoadError] = useState("");
-  const [zvecEnabled, setZvecEnabled] = useState(initialConfig?.zvecEnabled || false);
+  const [zvecEnabled, setZvecEnabled] = useState(
+    VECTOR_SEARCH_ENABLED ? (initialConfig?.zvecEnabled || false) : false
+  );
   const [embeddingBaseUrl, setEmbeddingBaseUrl] = useState(initialConfig?.embeddingBaseUrl || "");
   const [embeddingApiKey, setEmbeddingApiKey] = useState("");
   const [embeddingModel, setEmbeddingModel] = useState(initialConfig?.embeddingModel || "BAAI/bge-m3");
@@ -46,7 +51,7 @@ export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogP
       setKeyPreview(data.keyPreview || "");
       setApiKey("");
       setKeyFocused(false);
-      setZvecEnabled(data.zvecEnabled || false);
+      setZvecEnabled(VECTOR_SEARCH_ENABLED ? (data.zvecEnabled || false) : false);
       setEmbeddingBaseUrl(data.embeddingBaseUrl || "");
       setEmbeddingModel(data.embeddingModel || "BAAI/bge-m3");
       // 同步更新缓存
@@ -57,7 +62,7 @@ export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogP
         keyPreview: data.keyPreview,
         embeddingBaseUrl: data.embeddingBaseUrl,
         embeddingModel: data.embeddingModel,
-        zvecEnabled: data.zvecEnabled,
+        zvecEnabled: VECTOR_SEARCH_ENABLED ? data.zvecEnabled : false,
       };
       try { localStorage.setItem(AGENT_CONFIG_CACHE_KEY, JSON.stringify(config)); } catch {}
       return true;
@@ -110,7 +115,13 @@ export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogP
     if (!apiKey && !hasKey) return;
     setLoading(true);
     try {
-      const body: Record<string, string | boolean> = { baseUrl, model, embeddingBaseUrl, embeddingModel, zvecEnabled };
+      const body: Record<string, string | boolean> = {
+        baseUrl,
+        model,
+        embeddingBaseUrl,
+        embeddingModel,
+        zvecEnabled: VECTOR_SEARCH_ENABLED ? zvecEnabled : false,
+      };
       if (apiKey) body.apiKey = apiKey;
       if (embeddingApiKey) body.embeddingApiKey = embeddingApiKey;
 
@@ -134,7 +145,7 @@ export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogP
           keyPreview: newPreview,
           embeddingBaseUrl,
           embeddingModel,
-          zvecEnabled,
+          zvecEnabled: VECTOR_SEARCH_ENABLED ? zvecEnabled : false,
         };
         try { localStorage.setItem(AGENT_CONFIG_CACHE_KEY, JSON.stringify(config)); } catch {}
       }
@@ -252,14 +263,23 @@ export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogP
           </div>
 
           {/* Vector Search */}
-          <div className="settings-group">
+          <div
+            className="settings-group"
+            style={{ opacity: VECTOR_SEARCH_ENABLED ? 1 : 0.5 }}
+          >
             <div className="settings-group-title">
               <DatabaseIcon size={12} /> {t("settingsVectorSearch")}
             </div>
+            {!VECTOR_SEARCH_ENABLED && (
+              <div className="settings-row-desc" style={{ marginBottom: 8 }}>
+                {t("settingsVectorSearchDisabled")}
+              </div>
+            )}
 
             <div className="settings-row">
-              <div className="settings-row-label" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <div className="settings-row-label" style={{ display: "flex", alignItems: "center", gap: 4, width: "auto" }}>
                 {t("settingsZvec")}
+                <span style={{ color: "var(--color-text-muted)", fontWeight: 400 }}>(Embedding)</span>
                 <span className="info-tooltip-wrapper">
                   <InfoIcon size={14} />
                   <span className="info-tooltip">
@@ -272,14 +292,15 @@ export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogP
                   type="checkbox"
                   checked={zvecEnabled}
                   onChange={(e) => setZvecEnabled(e.target.checked)}
+                  disabled={!VECTOR_SEARCH_ENABLED}
                 />
               </label>
             </div>
 
-            {zvecEnabled && (
+            {zvecEnabled && VECTOR_SEARCH_ENABLED && (
               <>
                 <div className="settings-row">
-                  <div className="settings-row-label">{t("settingsBaseUrl")} (Embedding)</div>
+                  <div className="settings-row-label">{t("settingsBaseUrl")}</div>
                   <input
                     className="settings-input"
                     type="text"
@@ -290,7 +311,7 @@ export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogP
                 </div>
 
                 <div className="settings-row">
-                  <div className="settings-row-label">{t("settingsApiKey")} (Embedding)</div>
+                  <div className="settings-row-label">{t("settingsApiKey")}</div>
                   <input
                     className="settings-input"
                     type="password"
@@ -301,7 +322,7 @@ export function SettingsDialog({ open, onClose, initialConfig }: SettingsDialogP
                 </div>
 
                 <div className="settings-row">
-                  <div className="settings-row-label">{t("settingsModel")} (Embedding)</div>
+                  <div className="settings-row-label">{t("settingsModel")}</div>
                   <input
                     className="settings-input"
                     type="text"

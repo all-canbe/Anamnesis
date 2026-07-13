@@ -18,6 +18,7 @@ export interface RecordMeta {
   format: ContentFormat;
   visibility: Visibility;
   attachments?: Attachment[];
+  author?: string;
 }
 
 export interface ContentRecord {

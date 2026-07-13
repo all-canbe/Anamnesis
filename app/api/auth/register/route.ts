@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { hashPassword, createToken } from "@/lib/auth";
-import { verifyCode, getUserByEmail, createUser } from "@/lib/turso";
+import { verifyCode, getUserByEmail, createUser, tursoAddCategory } from "@/lib/turso";
 import { verifyCaptchaToken } from "@/lib/captcha";
 
 export async function POST(request: NextRequest) {
@@ -45,6 +45,13 @@ export async function POST(request: NextRequest) {
     const userId = randomUUID();
     const passwordHash = await hashPassword(password);
     await createUser(userId, email, passwordHash);
+
+    // 为新用户创建默认分类
+    try {
+      await tursoAddCategory("other", "其他", "Other", "other", "#6b7280", false, userId);
+    } catch {
+      // 默认分类创建失败不影响注册
+    }
 
     // 生成 JWT 并自动登录
     const token = await createToken(userId);

@@ -41,6 +41,7 @@ export function Shell({
   const [importOpen, setImportOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userUsername, setUserUsername] = useState<string | null>(null);
   const [settingsConfig, setSettingsConfig] = useState<CachedAgentConfig | null>(() => {
     try {
       const raw = localStorage.getItem(AGENT_CONFIG_CACHE_KEY);
@@ -56,6 +57,7 @@ export function Shell({
       .then(data => {
         if (data?.email) {
           setUserEmail(data.email);
+          setUserUsername(data.username || null);
           setListMode("private");
           return fetch("/api/settings", { credentials: "same-origin" });
         }
@@ -87,6 +89,7 @@ export function Shell({
       await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
     } catch {}
     setUserEmail(null);
+    setUserUsername(null);
     setListMode("public");
   }
 
@@ -159,7 +162,9 @@ export function Shell({
           onOpenLeftPanel={() => setLeftOpen((v) => !v)}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenImport={() => setImportOpen(true)}
-          username={userEmail}
+          username={userUsername || userEmail}
+          isAdmin={userEmail === "admin"}
+          onUsernameUpdate={setUserUsername}
           onOpenLogin={() => setLoginOpen(true)}
           onLogout={handleLogout}
         />
@@ -185,7 +190,14 @@ export function Shell({
       <LoginDialog
         open={loginOpen}
         onClose={() => setLoginOpen(false)}
-        onLoginSuccess={(email) => { setUserEmail(email); setListMode("private"); }}
+        onLoginSuccess={(email) => {
+          setUserEmail(email);
+          setListMode("private");
+          fetch("/api/auth/me", { credentials: "same-origin" })
+            .then(res => res.ok ? res.json() : null)
+            .then(data => { if (data?.username) setUserUsername(data.username); })
+            .catch(() => {});
+        }}
       />
     </div>
   );

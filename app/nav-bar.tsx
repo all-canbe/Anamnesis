@@ -1,7 +1,7 @@
 "use client";
 
 import { useLanguage } from "@/lib/language-context";
-import { MenuIcon, FolderIcon, DownloadIcon, SettingsIcon, UserIcon, GlobeIcon } from "@/lib/icons";
+import { MenuIcon, FolderIcon, DownloadIcon, SettingsIcon, UserIcon, GlobeIcon, CloseIcon } from "@/lib/icons";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -14,13 +14,19 @@ interface NavBarProps {
   onOpenSettings: () => void;
   onOpenImport: () => void;
   username: string | null;
+  isAdmin?: boolean;
+  onUsernameUpdate?: (username: string) => void;
   onOpenLogin: () => void;
   onLogout: () => void;
 }
 
-export function NavBar({ activeMode, listMode, onModeChange, onListModeChange, onOpenLeftPanel, onOpenSettings, onOpenImport, username, onOpenLogin, onLogout }: NavBarProps) {
+export function NavBar({ activeMode, listMode, onModeChange, onListModeChange, onOpenLeftPanel, onOpenSettings, onOpenImport, username, isAdmin, onUsernameUpdate, onOpenLogin, onLogout }: NavBarProps) {
   const { t } = useLanguage();
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
+  const [editUsernameOpen, setEditUsernameOpen] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+  const [usernameSaving, setUsernameSaving] = useState(false);
+  const [usernameError, setUsernameError] = useState("");
   const router = useRouter();
 
   function handleListModeChange(mode: "private" | "public") {
@@ -34,6 +40,46 @@ export function NavBar({ activeMode, listMode, onModeChange, onListModeChange, o
 
   function getInitial(name: string): string {
     return (name[0] || "").toUpperCase();
+  }
+
+  function openEditUsername() {
+    setAvatarMenuOpen(false);
+    setNewUsername(username || "");
+    setUsernameError("");
+    setEditUsernameOpen(true);
+  }
+
+  async function handleSaveUsername() {
+    const trimmed = newUsername.trim();
+    if (!trimmed) {
+      setUsernameError(t("usernameEmptyError"));
+      return;
+    }
+    if (trimmed.length > 30) {
+      setUsernameError(t("usernameEmptyError"));
+      return;
+    }
+    setUsernameSaving(true);
+    setUsernameError("");
+    try {
+      const res = await fetch("/api/auth/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ username: trimmed }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        onUsernameUpdate?.(data.username);
+        setEditUsernameOpen(false);
+      } else {
+        setUsernameError(data.error || t("usernameEmptyError"));
+      }
+    } catch {
+      setUsernameError(t("usernameEmptyError"));
+    } finally {
+      setUsernameSaving(false);
+    }
   }
 
   return (
@@ -102,6 +148,14 @@ export function NavBar({ activeMode, listMode, onModeChange, onListModeChange, o
             </button>
             {avatarMenuOpen && (
               <div className="nav-bar-avatar-menu">
+                {!isAdmin && (
+                  <button
+                    className="nav-bar-avatar-menu-item"
+                    onClick={openEditUsername}
+                  >
+                    {t("navEditUsername")}
+                  </button>
+                )}
                 <button
                   className="nav-bar-avatar-menu-item"
                   onClick={() => {
@@ -125,6 +179,53 @@ export function NavBar({ activeMode, listMode, onModeChange, onListModeChange, o
             <span className="nav-bar-tooltip">{username ? t("navSettings") : t("loginRequired")}</span>
           </button>
       </div>
+
+      {editUsernameOpen && (
+        <div className="modal-overlay" onClick={() => setEditUsernameOpen(false)}>
+          <div className="login-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="login-dialog-header">
+              <h3>{t("usernameDialogTitle")}</h3>
+              <button className="modal-close icon-btn" onClick={() => setEditUsernameOpen(false)}>
+                <CloseIcon size={16} />
+              </button>
+            </div>
+            <div className="login-dialog-body">
+              {usernameError && (
+                <div className="login-error">{usernameError}</div>
+              )}
+              <div className="login-row">
+                <div className="login-row-label">{t("usernameLabel")}</div>
+                <input
+                  className="login-input"
+                  type="text"
+                  value={newUsername}
+                  onChange={(e) => setNewUsername(e.target.value)}
+                  placeholder={t("usernamePlaceholder")}
+                  maxLength={30}
+                  autoFocus
+                  onKeyDown={(e) => { if (e.key === "Enter" && !usernameSaving) handleSaveUsername(); }}
+                />
+              </div>
+              <div className="login-actions">
+                <button
+                  className="btn btn-sm btn-link"
+                  onClick={() => setEditUsernameOpen(false)}
+                  type="button"
+                >
+                  {t("cancel")}
+                </button>
+                <button
+                  className="btn btn-sm btn-primary"
+                  onClick={handleSaveUsername}
+                  disabled={usernameSaving}
+                >
+                  {usernameSaving ? t("usernameSaving") : t("usernameSaveBtn")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }

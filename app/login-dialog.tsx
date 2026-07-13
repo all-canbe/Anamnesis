@@ -330,7 +330,7 @@ export function LoginDialog({ open, onClose, onLoginSuccess }: LoginDialogProps)
                   autoComplete="new-password"
                 />
               </div>
-              <div className="login-row">
+              <div className="login-row" style={{ flexWrap: "wrap" }}>
                 <div className="login-row-label">{t("codePlaceholder")}</div>
                 <div className="login-code-row">
                   <input
@@ -347,10 +347,14 @@ export function LoginDialog({ open, onClose, onLoginSuccess }: LoginDialogProps)
                     className="btn btn-sm btn-secondary"
                     onClick={handleSendCode}
                     disabled={sendingCode || codeCountdown > 0 || !sliderDone || captchaLoading}
+                    title={!sliderDone ? t("sliderCaptcha") : undefined}
                   >
                     {sendingCode ? t("sendingCode") : codeCountdown > 0 ? `${codeCountdown}s` : t("sendCode")}
                   </button>
                 </div>
+                {!sliderDone && (
+                  <div className="login-code-hint">{t("sliderCaptcha")}</div>
+                )}
               </div>
             </>
           )}

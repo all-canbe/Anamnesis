@@ -131,6 +131,14 @@ export async function initTursoSchema(): Promise<void> {
   try { await query("ALTER TABLE tags ADD COLUMN is_category INTEGER NOT NULL DEFAULT 0"); } catch {}
   try { await query("ALTER TABLE tags ADD COLUMN label_en TEXT NOT NULL DEFAULT ''"); } catch {}
 
+  // 迁移：users 表增加 username 列
+  try { await query("ALTER TABLE users ADD COLUMN username TEXT NOT NULL DEFAULT ''"); } catch {}
+  // 回填：将已有用户的 username 设为邮箱前缀
+  await query(
+    "UPDATE users SET username = substr(email, 1, instr(email, '@') - 1) WHERE username = '' AND instr(email, '@') > 0"
+  );
+  await query("UPDATE users SET username = email WHERE username = ''");
+
   // 种子数据：默认私有分类（每个用户可自行管理）
   const defaultPrivateCategories = [
     { key: "frontend", label: "前端" },
@@ -277,7 +285,7 @@ export interface CategoryRow {
 
 export async function tursoGetCategories(userId?: string): Promise<CategoryRow[]> {
   const rows = userId
-    ? await query("SELECT key, label, label_en, icon, color, is_public FROM tags WHERE is_category = 1 AND (is_public = 1 OR user_id = ?) ORDER BY key", [userId])
+    ? await query("SELECT key, label, label_en, icon, color, is_public FROM tags WHERE is_category = 1 AND user_id = ? ORDER BY key", [userId])
     : await query("SELECT key, label, label_en, icon, color, is_public FROM tags WHERE is_category = 1 AND is_public = 1 ORDER BY key");
   return rows.map((row: any) => ({
     key: row[0],
@@ -314,8 +322,8 @@ export async function tursoDeleteCategory(key: string, userId?: string): Promise
 
 export async function tursoGetPublicRecords(category?: string): Promise<RecordMeta[]> {
   const sql = category && category !== "all"
-    ? "SELECT id, slug, title, date, category, summary, format, visibility, attachments FROM records WHERE visibility = 'public' AND category = ? ORDER BY date DESC, id DESC"
-    : "SELECT id, slug, title, date, category, summary, format, visibility, attachments FROM records WHERE visibility = 'public' ORDER BY date DESC, id DESC";
+    ? "SELECT r.id, r.slug, r.title, r.date, r.category, r.summary, r.format, r.visibility, r.attachments, COALESCE(NULLIF(u.username, ''), r.user_id) AS author FROM records r LEFT JOIN users u ON r.user_id = u.id WHERE r.visibility = 'public' AND r.category = ? ORDER BY r.date DESC, r.id DESC"
+    : "SELECT r.id, r.slug, r.title, r.date, r.category, r.summary, r.format, r.visibility, r.attachments, COALESCE(NULLIF(u.username, ''), r.user_id) AS author FROM records r LEFT JOIN users u ON r.user_id = u.id WHERE r.visibility = 'public' ORDER BY r.date DESC, r.id DESC";
   const params = category && category !== "all" ? [category] : [];
   const rows = await query(sql, params);
   return rows.map((row: any) => ({
@@ -323,6 +331,7 @@ export async function tursoGetPublicRecords(category?: string): Promise<RecordMe
     date: row[3], category: row[4], summary: row[5], format: row[6],
     visibility: (row[7] || "public") as Visibility,
     attachments: safeParseAttachments(row[8]),
+    author: row[9],
   }));
 }
 
@@ -351,33 +360,42 @@ export interface UserRow {
   id: string;
   email: string;
   password_hash: string;
+  username: string;
   created_at: string;
 }
 
 export async function getUserByEmail(email: string): Promise<UserRow | null> {
   const rows = await query(
-    "SELECT id, email, password_hash, created_at FROM users WHERE email = ?",
+    "SELECT id, email, password_hash, username, created_at FROM users WHERE email = ?",
     [email.toLowerCase()]
   );
   if (rows.length === 0) return null;
   const row = rows[0];
-  return { id: row[0], email: row[1], password_hash: row[2], created_at: row[3] };
+  return { id: row[0], email: row[1], password_hash: row[2], username: row[3] || "", created_at: row[4] };
 }
 
 export async function getUserById(id: string): Promise<UserRow | null> {
   const rows = await query(
-    "SELECT id, email, password_hash, created_at FROM users WHERE id = ?",
+    "SELECT id, email, password_hash, username, created_at FROM users WHERE id = ?",
     [id]
   );
   if (rows.length === 0) return null;
   const row = rows[0];
-  return { id: row[0], email: row[1], password_hash: row[2], created_at: row[3] };
+  return { id: row[0], email: row[1], password_hash: row[2], username: row[3] || "", created_at: row[4] };
 }
 
 export async function createUser(id: string, email: string, passwordHash: string): Promise<void> {
+  const username = email.split("@")[0] || email;
   await query(
-    "INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)",
-    [id, email.toLowerCase(), passwordHash]
+    "INSERT INTO users (id, email, password_hash, username) VALUES (?, ?, ?, ?)",
+    [id, email.toLowerCase(), passwordHash, username]
+  );
+}
+
+export async function updateUsername(userId: string, username: string): Promise<void> {
+  await query(
+    "UPDATE users SET username = ? WHERE id = ?",
+    [username, userId]
   );
 }
 

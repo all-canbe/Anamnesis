@@ -58,6 +58,12 @@ async function resolveMode(userId?: string): Promise<boolean> {
     return false;
   }
 
+  // 线上部署可通过环境变量强制关闭 Zvec，避免使用本地文件向量数据库
+  if (process.env.ENABLE_VECTOR_SEARCH === "false") {
+    useRealZvec = false;
+    return false;
+  }
+
   try {
     const config = await getAgentConfig(userId);
     useRealZvec = config.zvecEnabled;

@@ -3,13 +3,19 @@ import { hasAgentConfig, saveAgentConfig } from "@/lib/agent-config";
 import { resetZvecMode } from "@/lib/zvec";
 import { verifyRequestAuth, unauthorizedResponse } from "@/lib/api-auth";
 
+/** 服务端向量搜索总开关；设置为 false 时强制关闭 Zvec，避免线上部署误用本地向量数据库 */
+const VECTOR_SEARCH_ENABLED = process.env.ENABLE_VECTOR_SEARCH !== "false";
+
 export async function GET(request: NextRequest) {
   const username = await verifyRequestAuth(request);
   if (!username) return unauthorizedResponse();
 
   try {
     const cfg = await hasAgentConfig(username);
-    return NextResponse.json(cfg);
+    return NextResponse.json({
+      ...cfg,
+      zvecEnabled: VECTOR_SEARCH_ENABLED ? cfg.zvecEnabled : false,
+    });
   } catch {
     return NextResponse.json({ configured: false, baseUrl: "", model: "" });
   }
@@ -38,6 +44,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const effectiveZvecEnabled = VECTOR_SEARCH_ENABLED && !!zvecEnabled;
+
     await saveAgentConfig(
       {
         baseUrl,
@@ -46,7 +54,7 @@ export async function POST(request: NextRequest) {
         embeddingBaseUrl: embeddingBaseUrl || "",
         embeddingApiKey: embeddingApiKey || "",
         embeddingModel: embeddingModel || "",
-        zvecEnabled: zvecEnabled || false,
+        zvecEnabled: effectiveZvecEnabled,
       },
       username,
       !apiKey,
