@@ -5,6 +5,7 @@ import { executeAgentLoop, type LoopContext } from "@/lib/agent-loop";
 import type { ChatMessage } from "@/lib/agent-llm";
 import { verifyRequestAuth, unauthorizedResponse } from "@/lib/api-auth";
 import { runWithUserId } from "@/lib/request-context";
+import { loadSlashCommands, loadSkillResources, loadSkillCatalog } from "@/lib/skill-registry";
 
 let agentInitialized = false;
 
@@ -37,6 +38,7 @@ You have access to the following tools. Use them when needed:
 | list_categories | List all categories/tags | Before creating a record, to see available categories |
 | add_category | Add a new category | User asks to create a new category |
 | delete_category | Delete a category | User asks to delete a category (must confirm migration first!) |
+| activate_skill | Load full skill instructions + resources | When user's request matches a skill in the Available Skills catalog |
 
 ## Guidelines
 - If the user just says "hello" or chats casually, respond directly without tools.
@@ -135,11 +137,10 @@ export async function POST(request: NextRequest) {
 
           // 2. 解析请求体
           const body = await request.json();
-          const { message, history = [], skillId, tool } = body as {
+          const { message, history = [], skillId } = body as {
             message: string;
             history: ChatMessage[];
             skillId?: string | null;
-            tool?: string | null;
           };
 
           if (!message || !message.trim()) {
@@ -157,10 +158,50 @@ export async function POST(request: NextRequest) {
           }
 
           // ─── 核心：skill 直接执行（参考 opencode 的 skill → tool 绑定） ───
-          if (tool && skillId) {
-            const toolDef = getTool(tool);
+          const slashCommands = loadSlashCommands();
+          const matchedSkill = skillId ? slashCommands.find((c) => c.id === skillId) : null;
+
+          if (skillId && !matchedSkill) {
+            enqueue("error", { content: `未知命令：${skillId}` });
+            enqueue("done", {});
+            safeClose();
+            return;
+          }
+
+          // Level 1: 始终注入技能目录（渐进式披露）
+          const catalog = loadSkillCatalog();
+          const catalogTable = catalog.length > 0
+            ? "\n\n## Available Skills (auto-activatable)\nThe following skills are available. If the user's request matches a skill description, call activate_skill to load full instructions.\n\n| Skill ID | Description |\n|----------|-------------|\n" +
+              catalog.map((s) => `| ${s.id} | ${s.description} |`).join("\n")
+            : "";
+
+          // Level 2+3: 加载该 skill 的完整规范（SKILL.md + 引用文件），注入 LLM 上下文
+          const skillResources = matchedSkill && skillId ? loadSkillResources(skillId) : null;
+          let skillInstructions = "";
+          if (skillResources && matchedSkill) {
+            const skillName = skillResources.frontmatter?.name || matchedSkill.name;
+            skillInstructions = `\n\n## Skill Instructions: ${skillName}\n\n${skillResources.skillMd}`;
+            if (skillResources.references.length > 0) {
+              skillInstructions += "\n\n## Referenced Files\n\n";
+              for (const ref of skillResources.references) {
+                skillInstructions += `### ${ref.path}\n\n${ref.content}\n\n`;
+              }
+            }
+          }
+
+          const boundTool = matchedSkill?.tool;
+
+          if (boundTool) {
+            if (!skillId) {
+              enqueue("error", { content: "缺少命令 ID，请重新选择 skill 后发送。" });
+              enqueue("done", {});
+              safeClose();
+              return;
+            }
+
+            const toolDef = getTool(boundTool);
             if (!toolDef) {
-              enqueue("error", { content: `未知工具：${tool}` });
+              enqueue("error", { content: `未知工具：${boundTool}` });
               enqueue("done", {});
               safeClose();
               return;
@@ -168,19 +209,20 @@ export async function POST(request: NextRequest) {
 
             const userInput = message.replace(/^\/\w+\s*/, "").trim();
             const args = ((): Record<string, any> => {
-              switch (tool) {
+              switch (boundTool) {
                 case "web_search": return { query: userInput };
                 case "web_fetch": return { url: userInput };
                 case "search_kb": return { query: userInput };
                 case "ask_kb": return { question: userInput };
                 case "search_skill": return { query: userInput };
                 case "fetch_skill": return { url: userInput };
+                case "import_skill": return { url: userInput };
                 case "summarize": return { record_id: userInput };
                 default: return { query: userInput };
               }
             })();
 
-            enqueue("tool_start", { id: skillId, name: tool });
+            enqueue("tool_start", { id: skillId, name: boundTool });
 
             let toolResult;
             try {
@@ -192,15 +234,15 @@ export async function POST(request: NextRequest) {
             if (toolResult.status === "error") {
               enqueue("error", { content: `${skillId} 执行失败：${toolResult.error}` });
               enqueue("done", {});
-              controller.close();
+              safeClose();
               return;
             }
 
-            enqueue("tool_end", { id: skillId, name: tool, status: "completed" });
+            enqueue("tool_end", { id: skillId, name: boundTool, status: "completed" });
 
             // 将工具结果注入上下文，让 LLM 基于结果回答
             const messages: ChatMessage[] = [
-              { role: "system", content: SYSTEM_PROMPT },
+              { role: "system", content: SYSTEM_PROMPT + catalogTable + skillInstructions },
               ...history,
               { role: "user", content: message },
               {
@@ -214,7 +256,7 @@ export async function POST(request: NextRequest) {
               messages,
               config,
               tools: getToolDefinitions(),
-              recentToolCalls: [{ name: tool, args: JSON.stringify(args) }],
+              recentToolCalls: [{ name: boundTool, args: JSON.stringify(args) }],
               round: 0,
             };
 
@@ -226,10 +268,10 @@ export async function POST(request: NextRequest) {
 
             enqueue("done", {});
           } else {
-            // 普通消息，走完整 Agent 循环
+            // 普通消息或没有绑定工具的 skill，走完整 Agent 循环
             const ctx: LoopContext = {
               messages: [
-                { role: "system", content: SYSTEM_PROMPT },
+                { role: "system", content: SYSTEM_PROMPT + catalogTable + skillInstructions },
                 ...history,
                 { role: "user", content: message },
               ],

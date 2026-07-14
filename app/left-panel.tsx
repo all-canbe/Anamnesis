@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/language-context";
 import { UploadFolderDialog } from "./upload-folder-dialog";
-import { MenuIcon, FolderIcon, PlusIcon, ChevronLeftIcon, SearchIcon } from "@/lib/icons";
+import { MenuIcon, ListBulletIcon, Squares2X2Icon, Bars4Icon, FolderIcon, PlusIcon, ChevronLeftIcon, SearchIcon } from "@/lib/icons";
 
 interface CategoryInfo {
   key: string;
@@ -129,21 +129,21 @@ export function LeftPanel({ open, listMode, viewMode, onViewModeChange, onClose 
               onClick={() => onViewModeChange("list")}
               title={t("leftPanelViewList")}
             >
-              <MenuIcon size={14} />
+              <ListBulletIcon size={14} />
             </button>
             <button
               className={`view-toggle-btn${viewMode === "grid" ? " active" : ""}`}
               onClick={() => onViewModeChange("grid")}
               title={t("leftPanelViewGrid")}
             >
-              <MenuIcon size={14} />
+              <Squares2X2Icon size={14} />
             </button>
             <button
               className={`view-toggle-btn${viewMode === "compact" ? " active" : ""}`}
               onClick={() => onViewModeChange("compact")}
               title={t("leftPanelViewCompact")}
             >
-              <MenuIcon size={14} />
+              <Bars4Icon size={14} />
             </button>
           </div>
         </div>

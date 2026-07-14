@@ -1,0 +1,9 @@
+{
+  "id": "stats",
+  "name": "Stats",
+  "description": "查看知识库统计信息（总数、分类分布）",
+  "icon": "📊",
+  "group": "command",
+  "template": "/stats",
+  "tool": "stats"
+}

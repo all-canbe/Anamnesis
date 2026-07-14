@@ -21,6 +21,9 @@ function ic(C: any) {
 
 // ─── All Heroicons linear-style exports ───
 export const MenuIcon = ic(H.Bars3Icon);
+export const ListBulletIcon = ic(H.ListBulletIcon);
+export const Squares2X2Icon = ic(H.Squares2X2Icon);
+export const Bars4Icon = ic(H.Bars4Icon);
 export const ChevronRightIcon = ic(H.ChevronRightIcon);
 export const ChevronLeftIcon = ic(H.ChevronLeftIcon);
 export const CloseIcon = ic(H.XMarkIcon);

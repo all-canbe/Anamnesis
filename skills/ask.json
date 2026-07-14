@@ -1,0 +1,9 @@
+{
+  "id": "ask",
+  "name": "Ask KB",
+  "description": "基于知识库内容进行 RAG 问答",
+  "icon": "💬",
+  "group": "command",
+  "template": "/ask {input}",
+  "tool": "ask_kb"
+}

@@ -1,0 +1,7 @@
+{
+  "id": "agent-reach",
+  "icon": "📡",
+  "group": "skill",
+  "template": "/agent-reach {input}",
+  "tool": "web_search"
+}

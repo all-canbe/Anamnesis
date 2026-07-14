@@ -5,6 +5,7 @@ import { searchSkills, searchWeb } from "./web-search";
 import { hybridSearch, semanticSearch, initIndex, addToIndex } from "./zvec";
 import { fetchSkillFromGitHub, importSkill } from "./skill-importer";
 import { getCurrentUserId } from "./request-context";
+import { loadSkillResources } from "./skill-registry";
 
 /**
  * Fallback for tests: global static userId when not in request context
@@ -29,9 +30,17 @@ function getEffectiveUserId(): string {
   return ctxId || fallbackUserId;
 }
 
+export interface ToolParamProperty {
+  type: string;
+  description?: string;
+  items?: ToolParamProperty;
+  properties?: Record<string, ToolParamProperty>;
+  required?: string[];
+}
+
 export interface ToolParam {
   type: string;
-  properties: Record<string, { type: string; description: string }>;
+  properties: Record<string, ToolParamProperty>;
   required: string[];
 }
 
@@ -509,8 +518,8 @@ export const tools: Tool[] = [
           category: meta.category,
           summary: meta.summary,
           visibility: meta.visibility,
-          attachments: meta.attachments.length,
-          message: `Record "${title}" created successfully with ID ${id} (visibility: ${vis}, attachments: ${meta.attachments.length}). The user can now find it in their knowledge base.`,
+          attachments: meta.attachments?.length || 0,
+          message: `Record "${title}" created successfully with ID ${id} (visibility: ${vis}, attachments: ${meta.attachments?.length || 0}). The user can now find it in their knowledge base.`,
         } };
       } catch (err: any) {
         return { status: "error", data: null, error: err.message };
@@ -717,6 +726,49 @@ export const tools: Tool[] = [
         return { status: "completed", data: {
           key,
           message: `Category "${key}" deleted successfully.`,
+        } };
+      } catch (err: any) {
+        return { status: "error", data: null, error: err.message };
+      }
+    },
+  },
+  {
+    name: "activate_skill",
+    description: "Activate a skill by loading its full instructions and referenced resources. Use this when the user's request matches a skill description in the Available Skills catalog. Returns the SKILL.md content and all referenced files.",
+    parameters: {
+      type: "object",
+      properties: {
+        skill_id: { type: "string", description: "Skill ID from the Available Skills catalog (e.g. 'kz-article-deep-analysis', 'agent-reach')" },
+      },
+      required: ["skill_id"],
+    },
+    async execute(args) {
+      try {
+        const { skill_id } = args;
+        if (!skill_id) {
+          return { status: "error", data: null, error: "skill_id is required" };
+        }
+
+        const resources = loadSkillResources(skill_id);
+        if (!resources) {
+          return { status: "error", data: null, error: `Skill '${skill_id}' not found or has no SKILL.md` };
+        }
+
+        // 拼接 SKILL.md + 引用文件
+        let content = resources.skillMd;
+        if (resources.references.length > 0) {
+          content += "\n\n---\n\n## Referenced Files\n\n";
+          for (const ref of resources.references) {
+            content += `### ${ref.path}\n\n${ref.content}\n\n`;
+          }
+        }
+
+        return { status: "completed", data: {
+          skill_id,
+          name: resources.frontmatter?.name || skill_id,
+          content,
+          referenceCount: resources.references.length,
+          references: resources.references.map((r) => r.path),
         } };
       } catch (err: any) {
         return { status: "error", data: null, error: err.message };

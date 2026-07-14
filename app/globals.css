@@ -331,29 +331,6 @@ img {
   animation: textReveal 0.6s var(--ease-out) 0.3s both;
 }
 
-/* -- Title underline animation on hover -- */
-.record-title {
-  position: relative;
-  display: inline;
-}
-
-.record-title::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  bottom: -1px;
-  width: 100%;
-  height: 1px;
-  background: var(--color-accent);
-  transform: scaleX(0);
-  transform-origin: left center;
-  transition: transform 0.35s var(--ease-out);
-}
-
-.record-card:hover .record-title::after {
-  transform: scaleX(1);
-}
-
 /* -- Page transition -- */
 .page-view {
   animation: pageEnter 0.35s var(--ease-out);
@@ -1464,6 +1441,10 @@ img {
 
 .view-toggle-btn {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
   padding: 4px 0;
   font-size: 14px;
   line-height: 1;
@@ -2534,26 +2515,15 @@ img {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  transition: opacity 0.25s var(--ease-out);
-  position: relative;
-  display: inline;
+  transition: opacity 0.25s var(--ease-out), background-size 0.35s var(--ease-out);
+  background-image: linear-gradient(var(--color-accent), var(--color-accent));
+  background-position: left bottom 1px;
+  background-repeat: no-repeat;
+  background-size: 0% 1.5px;
 }
 
-.record-title::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  bottom: -1px;
-  width: 100%;
-  height: 1.5px;
-  background: var(--color-accent);
-  transform: scaleX(0);
-  transform-origin: left center;
-  transition: transform 0.35s var(--ease-out);
-}
-
-.record-card:hover .record-title::after {
-  transform: scaleX(1);
+.record-card:hover .record-title {
+  background-size: 100% 1.5px;
 }
 
 .record-author {

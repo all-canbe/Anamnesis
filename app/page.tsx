@@ -17,16 +17,24 @@ async function getUsernameFromCookie(): Promise<string | null> {
   } catch { return null; }
 }
 
+function getPerPage(viewMode: string | undefined): number {
+  if (viewMode === "grid") return 12;
+  if (viewMode === "compact") return 10;
+  return 5;
+}
+
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ category?: string; page?: string; mode?: string }> }) {
   const params = await searchParams;
   const category = params.category || "all";
   const page = parseInt(params.page || "1", 10);
   const isPublic = params.mode === "public";
+  const cookieStore = await cookies();
+  const viewMode = cookieStore.get("zhiyi-view-mode")?.value as "list" | "grid" | "compact" | undefined;
+  const PER_PAGE = getPerPage(viewMode);
 
   if (isPublic) {
     const allRecords = await getPublicRecords(category === "all" ? undefined : category);
     const categories = await getPublicCategories();
-    const PER_PAGE = 5;
     const totalPages = Math.ceil(allRecords.length / PER_PAGE);
     const pageRecords = allRecords.slice((page - 1) * PER_PAGE, page * PER_PAGE);
     return (
@@ -56,7 +64,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     allRecords = await getFilteredRecords(category === "all" ? undefined : category, username || undefined);
   }
   const categories = await getCategories(username || undefined);
-  const PER_PAGE = 5;
   const totalPages = Math.ceil(allRecords.length / PER_PAGE);
   const pageRecords = allRecords.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 

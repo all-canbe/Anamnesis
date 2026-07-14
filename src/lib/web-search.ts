@@ -119,7 +119,16 @@ export async function searchWeb(query: string, limit = 5): Promise<SearchResult[
   const results3 = await tryBocha(query, limit);
   if (results3.length > 0) return results3;
 
-  return tryJinaSearch(query, limit);
+  const results4 = await tryJinaSearch(query, limit);
+  if (results4.length > 0) return results4;
+
+  // 所有搜索 API 都配置为空或失败 → 返回一个提示结果让 LLM 告知用户
+  return [{
+    title: "搜索服务未配置",
+    url: "",
+    snippet: "当前未配置搜索 API 密钥（TAVILY_API_KEY / SERPER_API_KEY / BOCHA_API_KEY），无法执行联网搜索。请在环境变量中配置其中一个密钥后重试。",
+    source: "web",
+  }];
 }
 
 export async function searchGitHub(query: string, limit = 5): Promise<SearchResult[]> {

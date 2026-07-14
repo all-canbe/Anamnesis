@@ -1,0 +1,7 @@
+{
+  "id": "kz-article-deep-analysis",
+  "icon": "📖",
+  "group": "skill",
+  "template": "/kz-article-deep-analysis {input}",
+  "tool": "web_fetch"
+}

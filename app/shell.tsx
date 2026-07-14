@@ -116,7 +116,13 @@ export function Shell({
 
   useEffect(() => {
     const saved = localStorage.getItem(VIEW_KEY) as "list" | "grid" | "compact" | null;
-    if (saved && saved !== initialViewMode) setViewMode(saved);
+    if (saved) {
+      if (saved !== initialViewMode) setViewMode(saved);
+      // 将 localStorage 中的视图偏好同步回 cookie，使服务端下次渲染能按该视图分页
+      try {
+        document.cookie = `zhiyi-view-mode=${saved};path=/;max-age=31536000`;
+      } catch {}
+    }
   }, [initialViewMode]);
 
   useEffect(() => {
@@ -135,6 +141,8 @@ export function Shell({
     try {
       document.cookie = `zhiyi-view-mode=${mode};path=/;max-age=31536000`;
     } catch {}
+    // 触发服务端按新 cookie 重新计算 PER_PAGE 并切片
+    router.refresh();
   }
 
   return (

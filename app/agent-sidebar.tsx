@@ -30,7 +30,6 @@ import {
 import {
   type SlashCommand,
   filterCommands,
-  SLASH_COMMANDS,
 } from "@/lib/slash-commands";
 import { SlashCommandPanel } from "./slash-panel";
 
@@ -38,9 +37,9 @@ function renderMarkdown(text: string): string {
   return mdToHtml(text);
 }
 
-function renderUserContent(content: string): { __html: string } {
+function renderUserContent(content: string, commands: SlashCommand[]): { __html: string } {
     const text = content.trimStart();
-    const sorted = [...SLASH_COMMANDS].sort((a, b) => b.name.length - a.name.length);
+    const sorted = [...commands].sort((a, b) => b.name.length - a.name.length);
     const matched = sorted.find((cmd) => text.startsWith(`/${cmd.name}`));
     if (!matched) return { __html: renderMarkdown(content) };
     const prefix = `/${matched.name}`;
@@ -76,6 +75,7 @@ export function AgentSidebar({ open, onToggle, settingsConfig }: {
   const [cursorAtStart, setCursorAtStart] = useState(true);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [sending, setSending] = useState(false);
+  const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -100,6 +100,19 @@ export function AgentSidebar({ open, onToggle, settingsConfig }: {
       setSessions(loaded);
       setActiveId(loaded[0].id);
     }
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/skills")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data.commands)) {
+          setSlashCommands(data.commands);
+        }
+      })
+      .catch(() => {
+        setSlashCommands([]);
+      });
   }, []);
 
   useEffect(() => {
@@ -263,7 +276,7 @@ export function AgentSidebar({ open, onToggle, settingsConfig }: {
       const res = await fetch("/api/agent/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history, skillId: activeSlash?.id ?? null, tool: activeSlash?.tool ?? null }),
+        body: JSON.stringify({ message: text, history, skillId: activeSlash?.id ?? null }),
         signal: abort.signal,
       });
 
@@ -297,11 +310,16 @@ export function AgentSidebar({ open, onToggle, settingsConfig }: {
               fullContent += data.content;
               setStreamContent(fullContent);
               setThinking(false);
+              setToolStatus("");
             } else if (data.type === "tool_start") {
               setToolStatus(t("agentToolRunning").replace("{name}", data.name));
               setThinking(false);
             } else if (data.type === "tool_end") {
-              setToolStatus(data.status === "error" ? t("agentToolFailed").replace("{name}", data.name) : "");
+              if (data.status === "error") {
+                setToolStatus(t("agentToolFailed").replace("{name}", data.name));
+              } else {
+                setToolStatus(t("agentWaitingForResponse"));
+              }
             } else if (data.type === "tool" || data.type === "tool_done") {
               // 兼容旧事件
               if (data.type === "tool") setToolStatus(t("agentUsingTool").replace("{name}", data.name));
@@ -403,8 +421,8 @@ export function AgentSidebar({ open, onToggle, settingsConfig }: {
   }, [input, slashOpen]);
 
   const { commands: _cmds, skills: _sk } = useMemo(
-    () => filterCommands(slashFilter),
-    [slashFilter]
+    () => filterCommands(slashCommands, slashFilter),
+    [slashCommands, slashFilter]
   );
   const slashTotal = _cmds.length + _sk.length;
 
@@ -528,7 +546,7 @@ export function AgentSidebar({ open, onToggle, settingsConfig }: {
                 <div className="agent-msg-content-wrap">
                   <div
                     className="agent-msg-content agent-msg-html"
-                    dangerouslySetInnerHTML={msg.role === "user" ? renderUserContent(msg.content) : { __html: renderMarkdown(msg.content) }}
+                    dangerouslySetInnerHTML={msg.role === "user" ? renderUserContent(msg.content, slashCommands) : { __html: renderMarkdown(msg.content) }}
                   />
                   <button
                     className="agent-msg-copy icon-btn"
@@ -674,6 +692,7 @@ export function AgentSidebar({ open, onToggle, settingsConfig }: {
           <div className="agent-disclaimer">{t("agentDisclaimer")}</div>
           {slashOpen && activeSlash === null && (
             <SlashCommandPanel
+              commands={slashCommands}
               filterText={slashFilter}
               selectedIndex={slashIndex}
               onSelect={handleSlashSelect}

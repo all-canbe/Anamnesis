@@ -1,0 +1,9 @@
+{
+  "id": "summarize",
+  "name": "Summarize",
+  "description": "总结指定知识库记录的内容",
+  "icon": "📝",
+  "group": "command",
+  "template": "/summarize {input}",
+  "tool": "summarize"
+}

@@ -5,20 +5,21 @@ import { type SlashCommand, filterCommands } from "@/lib/slash-commands";
 import { useLanguage } from "@/lib/language-context";
 
 interface Props {
+  commands: SlashCommand[];
   filterText: string;
   selectedIndex: number;
   onSelect: (cmd: SlashCommand) => void;
   anchorRef: React.RefObject<HTMLElement | null>;
 }
 
-export function SlashCommandPanel({ filterText, selectedIndex, onSelect, anchorRef }: Props) {
+export function SlashCommandPanel({ commands: allCommands, filterText, selectedIndex, onSelect, anchorRef }: Props) {
   const { t } = useLanguage();
   const panelRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLDivElement>(null);
 
   const { commands, skills } = useMemo(
-    () => filterCommands(filterText),
-    [filterText]
+    () => filterCommands(allCommands, filterText),
+    [allCommands, filterText]
   );
 
   const isEmpty = commands.length === 0 && skills.length === 0;

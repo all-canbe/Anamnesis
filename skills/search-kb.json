@@ -1,0 +1,9 @@
+{
+  "id": "search-kb",
+  "name": "Search KB",
+  "description": "在知识库中搜索已有记录",
+  "icon": "🔍",
+  "group": "command",
+  "template": "/search-kb {input}",
+  "tool": "search_kb"
+}

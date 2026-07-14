@@ -1,0 +1,9 @@
+{
+  "id": "find-skill",
+  "name": "Find Skill",
+  "description": "搜索并导入 GitHub 上的技能/教程到知识库",
+  "icon": "🧩",
+  "group": "command",
+  "template": "/find-skill {input}",
+  "tool": "search_skill"
+}

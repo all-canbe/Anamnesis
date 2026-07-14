@@ -1,0 +1,9 @@
+{
+  "id": "import",
+  "name": "Import",
+  "description": "从 GitHub 仓库导入 skill/教程到知识库",
+  "icon": "📥",
+  "group": "command",
+  "template": "/import {input}",
+  "tool": "import_skill"
+}
