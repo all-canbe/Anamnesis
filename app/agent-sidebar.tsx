@@ -51,10 +51,12 @@ function renderUserContent(content: string, commands: SlashCommand[]): { __html:
 
 import type { CachedAgentConfig } from "./shell";
 
-export function AgentSidebar({ open, onToggle, settingsConfig }: {
+export function AgentSidebar({ open, onToggle, settingsConfig, isLoggedIn, onLoginPrompt }: {
   open: boolean;
   onToggle: () => void;
   settingsConfig: CachedAgentConfig | null;
+  isLoggedIn: boolean;
+  onLoginPrompt: (message: string) => void;
 }) {
   const { t } = useLanguage();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -239,6 +241,10 @@ export function AgentSidebar({ open, onToggle, settingsConfig }: {
 
   const sendMessage = useCallback(async () => {
     if (sending) return;
+    if (!isLoggedIn) {
+      onLoginPrompt(t("loginRequired"));
+      return;
+    }
     const body = input.trim();
     const text = activeSlash
       ? `${activeSlash.template.replace("{input}", body).trimEnd()}${body ? " " + body : ""}`.trim()

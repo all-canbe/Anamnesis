@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { LeftPanel } from "./left-panel";
 import { AgentSidebar } from "./agent-sidebar";
 import { FooterBar } from "./footer-bar";
@@ -33,6 +34,7 @@ export function Shell({
   initialViewMode?: "list" | "grid" | "compact";
 }) {
   const { t } = useLanguage();
+  const router = useRouter();
   const [leftOpen, setLeftOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(true);
   const [viewMode, setViewMode] = useState<"list" | "grid" | "compact">(initialViewMode);
@@ -42,6 +44,7 @@ export function Shell({
   const [loginOpen, setLoginOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userUsername, setUserUsername] = useState<string | null>(null);
+  const [loginPromptMessage, setLoginPromptMessage] = useState<string | null>(null);
   const [settingsConfig, setSettingsConfig] = useState<CachedAgentConfig | null>(() => {
     try {
       const raw = localStorage.getItem(AGENT_CONFIG_CACHE_KEY);
@@ -82,6 +85,17 @@ export function Shell({
       })
       .catch(() => {});
   }, []);
+
+  // 登录提示：自动 3 秒消失
+  useEffect(() => {
+    if (!loginPromptMessage) return;
+    const timer = setTimeout(() => setLoginPromptMessage(null), 3000);
+    return () => clearTimeout(timer);
+  }, [loginPromptMessage]);
+
+  function handleLoginPrompt(message: string) {
+    setLoginPromptMessage(message);
+  }
 
   // 登出
   async function handleLogout() {
@@ -173,8 +187,10 @@ export function Shell({
           username={userUsername || userEmail}
           isAdmin={userEmail === "admin"}
           onUsernameUpdate={setUserUsername}
-          onOpenLogin={() => setLoginOpen(true)}
+          onOpenLogin={() => { setLoginOpen(true); setLoginPromptMessage(null); }}
           onLogout={handleLogout}
+          loginPromptMessage={loginPromptMessage}
+          onLoginPrompt={handleLoginPrompt}
         />
 
         <LeftPanel
@@ -190,7 +206,7 @@ export function Shell({
           <FooterBar />
         </main>
 
-        <AgentSidebar open={agentOpen} onToggle={() => setAgentOpen((v) => !v)} settingsConfig={settingsConfig} />
+        <AgentSidebar open={agentOpen} onToggle={() => setAgentOpen((v) => !v)} settingsConfig={settingsConfig} isLoggedIn={!!userEmail} onLoginPrompt={handleLoginPrompt} />
       </div>
 
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} initialConfig={settingsConfig} />

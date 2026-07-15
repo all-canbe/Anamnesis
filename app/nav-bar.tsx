@@ -18,9 +18,11 @@ interface NavBarProps {
   onUsernameUpdate?: (username: string) => void;
   onOpenLogin: () => void;
   onLogout: () => void;
+  loginPromptMessage: string | null;
+  onLoginPrompt: (message: string) => void;
 }
 
-export function NavBar({ activeMode, listMode, onModeChange, onListModeChange, onOpenLeftPanel, onOpenSettings, onOpenImport, username, isAdmin, onUsernameUpdate, onOpenLogin, onLogout }: NavBarProps) {
+export function NavBar({ activeMode, listMode, onModeChange, onListModeChange, onOpenLeftPanel, onOpenSettings, onOpenImport, username, isAdmin, onUsernameUpdate, onOpenLogin, onLogout, loginPromptMessage, onLoginPrompt }: NavBarProps) {
   const { t } = useLanguage();
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const [editUsernameOpen, setEditUsernameOpen] = useState(false);
@@ -87,9 +89,8 @@ export function NavBar({ activeMode, listMode, onModeChange, onListModeChange, o
       <div className="nav-bar-items">
         <button
           className={`nav-bar-btn${listMode === "private" ? " active" : ""}${!username ? " disabled" : ""}`}
-          onClick={() => username ? handleListModeChange("private") : undefined}
+          onClick={() => username ? handleListModeChange("private") : onLoginPrompt(t("loginRequired"))}
           title={username ? t("navPrivateList") : t("loginRequired")}
-          disabled={!username}
         >
           <MenuIcon size={16} />
           <span className="nav-bar-tooltip">{username ? t("navPrivateList") : t("loginRequired")}</span>
@@ -117,9 +118,8 @@ export function NavBar({ activeMode, listMode, onModeChange, onListModeChange, o
 
         <button
           className={`nav-bar-btn${!username ? " disabled" : ""}`}
-          onClick={() => username ? onOpenImport() : undefined}
+          onClick={() => username ? onOpenImport() : onLoginPrompt(t("loginRequired"))}
           title={username ? t("navImportArticle") : t("loginRequired")}
-          disabled={!username}
         >
           <DownloadIcon size={16} />
           <span className="nav-bar-tooltip">{username ? t("navImportArticle") : t("loginRequired")}</span>
@@ -129,14 +129,22 @@ export function NavBar({ activeMode, listMode, onModeChange, onListModeChange, o
       <div className="nav-bar-bottom">
         <div className="nav-bar-divider" />
         {!username ? (
-          <button
-            className="nav-bar-btn"
-            onClick={onOpenLogin}
-            title={t("navLogin")}
-          >
-            <UserIcon size={16} />
-            <span className="nav-bar-tooltip">{t("navLogin")}</span>
-          </button>
+          <div className="nav-bar-login-btn-wrap">
+            <button
+              className="nav-bar-btn"
+              onClick={() => { onOpenLogin(); }}
+              title={t("navLogin")}
+            >
+              <UserIcon size={16} />
+              <span className="nav-bar-tooltip">{t("navLogin")}</span>
+            </button>
+            {loginPromptMessage && (
+              <div className="nav-bar-login-popover">
+                <div className="nav-bar-login-popover-arrow" />
+                <span>{loginPromptMessage}</span>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="nav-bar-avatar-container">
             <button
