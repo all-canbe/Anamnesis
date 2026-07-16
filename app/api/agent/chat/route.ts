@@ -292,10 +292,15 @@ export async function POST(request: NextRequest) {
               enqueue("error", { content: result.message });
             } else {
               // 精简持久化：user → 中间消息（tool 等）→ 最终 assistant
+              // 最终 assistant 只取一次：优先 ctx.messages 中的最后一条，否则用流式收集的 assistantFullContent
               const newMsgs = ctx.messages.slice(initialLen).filter(m =>
                 m.role !== "system" && !(m.role === "assistant" && !m.content)
               );
-              if (newMsgs.length > 0 || assistantFullContent) {
+              const finalAssistantFromCtx = newMsgs.length > 0 && newMsgs[newMsgs.length - 1].role === "assistant"
+                ? newMsgs.pop()
+                : undefined;
+
+              if (newMsgs.length > 0 || finalAssistantFromCtx || assistantFullContent) {
                 try {
                   await appendMessage(sessionId, { role: "user", content: message });
                   for (const m of newMsgs) {
@@ -313,8 +318,9 @@ export async function POST(request: NextRequest) {
                       await appendMessage(sessionId, { role: "assistant", content: m.content });
                     }
                   }
-                  if (assistantFullContent) {
-                    await appendMessage(sessionId, { role: "assistant", content: assistantFullContent });
+                  const finalContent = (finalAssistantFromCtx?.content || assistantFullContent || "").trim();
+                  if (finalContent) {
+                    await appendMessage(sessionId, { role: "assistant", content: finalContent });
                   }
                 } catch (e: any) {
                   console.warn("持久化会话消息失败:", e);
@@ -350,10 +356,15 @@ export async function POST(request: NextRequest) {
               enqueue("error", { content: result.message });
             } else {
               // 精简持久化：user → 中间消息（tool 等）→ 最终 assistant
+              // 最终 assistant 只取一次：优先 ctx.messages 中的最后一条，否则用流式收集的 assistantFullContent
               const newMsgs = ctx.messages.slice(initialLen).filter(m =>
                 m.role !== "system" && !(m.role === "assistant" && !m.content)
               );
-              if (newMsgs.length > 0 || assistantFullContent) {
+              const finalAssistantFromCtx = newMsgs.length > 0 && newMsgs[newMsgs.length - 1].role === "assistant"
+                ? newMsgs.pop()
+                : undefined;
+
+              if (newMsgs.length > 0 || finalAssistantFromCtx || assistantFullContent) {
                 try {
                   await appendMessage(sessionId, { role: "user", content: message });
                   for (const m of newMsgs) {
@@ -371,8 +382,9 @@ export async function POST(request: NextRequest) {
                       await appendMessage(sessionId, { role: "assistant", content: m.content });
                     }
                   }
-                  if (assistantFullContent) {
-                    await appendMessage(sessionId, { role: "assistant", content: assistantFullContent });
+                  const finalContent = (finalAssistantFromCtx?.content || assistantFullContent || "").trim();
+                  if (finalContent) {
+                    await appendMessage(sessionId, { role: "assistant", content: finalContent });
                   }
                 } catch (e: any) {
                   console.warn("持久化会话消息失败:", e);

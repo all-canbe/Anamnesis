@@ -86,6 +86,19 @@ export function AgentSidebar({ open, onToggle, settingsConfig, isLoggedIn, onLog
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const loadedSessionIds = useRef<Set<string>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
+
+  // 合并服务端消息与本地乐观消息，按 (role, content, timestamp) 去重
+  function mergeUniqueMessages(local: ChatMessage[], remote: ChatMessage[]): ChatMessage[] {
+    const seen = new Set<string>();
+    const result: ChatMessage[] = [];
+    for (const m of [...local, ...remote]) {
+      const key = `${m.role}:${m.content}:${m.timestamp ?? 0}:${m.toolCallId ?? ""}:${m.toolName ?? ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(m);
+    }
+    return result;
+  }
   const renameInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -141,13 +154,17 @@ export function AgentSidebar({ open, onToggle, settingsConfig, isLoggedIn, onLog
         } else {
           setSessions(remote);
           setActiveId(remote[0].id);
-          // 懒加载首个会话消息
+          // 懒加载首个会话消息（与本地已有消息合并去重）
           fetchMessages(remote[0].id)
             .then((msgs) => {
               if (cancelled) return;
               loadedSessionIds.current.add(remote[0].id);
               setSessions((prev) =>
-                prev.map((s) => (s.id === remote[0].id ? { ...s, messages: msgs } : s))
+                prev.map((s) =>
+                  s.id === remote[0].id
+                    ? { ...s, messages: mergeUniqueMessages(s.messages, msgs) }
+                    : s
+                )
               );
             })
             .catch(() => {});
@@ -237,7 +254,9 @@ export function AgentSidebar({ open, onToggle, settingsConfig, isLoggedIn, onLog
     fetchMessages(id)
       .then((msgs) => {
         setSessions((prev) =>
-          prev.map((s) => (s.id === id ? { ...s, messages: msgs } : s))
+          prev.map((s) =>
+            s.id === id ? { ...s, messages: mergeUniqueMessages(s.messages, msgs) } : s
+          )
         );
       })
       .catch((e) => {
