@@ -121,6 +121,7 @@ export async function initTursoSchema(): Promise<void> {
     content TEXT NOT NULL,
     tool_call_id TEXT,
     tool_name TEXT,
+    tool_calls_json TEXT,
     timestamp INTEGER NOT NULL,
     seq INTEGER NOT NULL,
     FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
@@ -129,6 +130,9 @@ export async function initTursoSchema(): Promise<void> {
   await query(createChatMessages);
   await query("CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id, updated_at DESC)");
   await query("CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, seq)");
+
+  // 迁移：为 chat_messages 添加 tool_calls_json 列（存储 assistant 的 tool_calls，OpenAI 规范要求）
+  try { await query("ALTER TABLE chat_messages ADD COLUMN tool_calls_json TEXT"); } catch {}
 
   // 迁移：为旧表添加可能缺失的列（CREATE TABLE IF NOT EXISTS 不会修改已存在的表）
   try { await query("ALTER TABLE records ADD COLUMN user_id TEXT NOT NULL DEFAULT ''"); } catch {}

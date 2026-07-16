@@ -207,10 +207,15 @@ export async function executeAgentLoop(
 
     // 4. finishReason === "tool_calls" → 执行工具
     if (result.toolCalls.length > 0) {
-      // 添加 assistant 消息（含 tool_calls 用于上下文）
+      // 添加 assistant 消息（含 tool_calls 用于上下文，符合 OpenAI 规范）
       ctx.messages.push({
         role: "assistant",
         content: result.content || "",
+        tool_calls: result.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: "function" as const,
+          function: { name: tc.name, arguments: tc.arguments },
+        })),
       });
 
       const toolResult = await executeTools(ctx, result.toolCalls, enqueue);

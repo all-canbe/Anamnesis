@@ -46,6 +46,8 @@ export interface ChatMessage {
   tool_call_id?: string;
   /** LLM API 兼容：name (snake_case 别名) */
   name?: string;
+  /** assistant 消息携带的 tool_calls（OpenAI 规范） */
+  tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
 }
 
 export interface TokenEstimate {

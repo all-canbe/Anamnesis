@@ -667,6 +667,8 @@ export function AgentSidebar({ open, onToggle, settingsConfig, isLoggedIn, onLog
             {messages.map((msg, i) => {
               // 跳过 system 消息（ask_kb 注入的上下文，不展示给用户）
               if (msg.role === "system") return null;
+              // 跳过带 tool_calls 的空 assistant 消息（OpenAI 配对元数据，不是实际回复）
+              if (msg.role === "assistant" && !msg.content && msg.tool_calls) return null;
               // tool 消息：精简展示工具调用记录
               if (msg.role === "tool") {
                 const isError = msg.content.includes('"error"') || msg.content.includes("Unknown tool");

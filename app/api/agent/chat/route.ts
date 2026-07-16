@@ -260,13 +260,24 @@ export async function POST(request: NextRequest) {
             enqueue("tool_end", { id: skillId, name: boundTool, status: "completed" });
 
             // 将工具结果注入上下文，让 LLM 基于结果回答
+            // OpenAI 规范：tool 消息前必须有带 tool_calls 的 assistant 消息
             const messages: ChatMessage[] = [
               { role: "system", content: SYSTEM_PROMPT + catalogTable + skillInstructions },
               ...compressedHistory,
               { role: "user", content: message },
               {
+                role: "assistant",
+                content: "",
+                tool_calls: [{
+                  id: skillId,
+                  type: "function",
+                  function: { name: boundTool, arguments: JSON.stringify(args) },
+                }],
+              },
+              {
                 role: "tool",
                 tool_call_id: skillId,
+                name: boundTool,
                 content: JSON.stringify(toolResult.data),
               },
             ];
@@ -291,12 +302,12 @@ export async function POST(request: NextRequest) {
             if (result.type === "error") {
               enqueue("error", { content: result.message });
             } else {
-              // 精简持久化：user → 中间消息（tool 等）→ 最终 assistant
-              // 最终 assistant 只取一次：优先 ctx.messages 中的最后一条，否则用流式收集的 assistantFullContent
+              // 精简持久化：user → 中间消息（assistant+tool_calls → tool）→ 最终 assistant
+              // 过滤 system 注入（ask_kb 上下文、nudge 提示），但保留带 tool_calls 的 assistant（即使 content 为空）
               const newMsgs = ctx.messages.slice(initialLen).filter(m =>
-                m.role !== "system" && !(m.role === "assistant" && !m.content)
+                m.role !== "system" && !(m.role === "assistant" && !m.content && !m.tool_calls)
               );
-              const finalAssistantFromCtx = newMsgs.length > 0 && newMsgs[newMsgs.length - 1].role === "assistant"
+              const finalAssistantFromCtx = newMsgs.length > 0 && newMsgs[newMsgs.length - 1].role === "assistant" && !newMsgs[newMsgs.length - 1].tool_calls
                 ? newMsgs.pop()
                 : undefined;
 
@@ -315,7 +326,11 @@ export async function POST(request: NextRequest) {
                         toolName: m.name,
                       });
                     } else if (m.role === "assistant") {
-                      await appendMessage(sessionId, { role: "assistant", content: m.content });
+                      await appendMessage(sessionId, {
+                        role: "assistant",
+                        content: m.content,
+                        tool_calls: m.tool_calls,
+                      });
                     }
                   }
                   const finalContent = (finalAssistantFromCtx?.content || assistantFullContent || "").trim();
@@ -355,12 +370,12 @@ export async function POST(request: NextRequest) {
             if (result.type === "error") {
               enqueue("error", { content: result.message });
             } else {
-              // 精简持久化：user → 中间消息（tool 等）→ 最终 assistant
-              // 最终 assistant 只取一次：优先 ctx.messages 中的最后一条，否则用流式收集的 assistantFullContent
+              // 精简持久化：user → 中间消息（assistant+tool_calls → tool）→ 最终 assistant
+              // 过滤 system 注入（ask_kb 上下文、nudge 提示），但保留带 tool_calls 的 assistant（即使 content 为空）
               const newMsgs = ctx.messages.slice(initialLen).filter(m =>
-                m.role !== "system" && !(m.role === "assistant" && !m.content)
+                m.role !== "system" && !(m.role === "assistant" && !m.content && !m.tool_calls)
               );
-              const finalAssistantFromCtx = newMsgs.length > 0 && newMsgs[newMsgs.length - 1].role === "assistant"
+              const finalAssistantFromCtx = newMsgs.length > 0 && newMsgs[newMsgs.length - 1].role === "assistant" && !newMsgs[newMsgs.length - 1].tool_calls
                 ? newMsgs.pop()
                 : undefined;
 
@@ -379,7 +394,11 @@ export async function POST(request: NextRequest) {
                         toolName: m.name,
                       });
                     } else if (m.role === "assistant") {
-                      await appendMessage(sessionId, { role: "assistant", content: m.content });
+                      await appendMessage(sessionId, {
+                        role: "assistant",
+                        content: m.content,
+                        tool_calls: m.tool_calls,
+                      });
                     }
                   }
                   const finalContent = (finalAssistantFromCtx?.content || assistantFullContent || "").trim();

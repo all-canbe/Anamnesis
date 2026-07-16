@@ -59,7 +59,7 @@ export async function listSessions(limit = 50): Promise<ChatSessionMeta[]> {
 export async function getSessionMessages(sessionId: string): Promise<ChatMessage[]> {
   await assertSessionOwned(sessionId);
   const rows = await query(
-    "SELECT role, content, tool_call_id, tool_name, timestamp FROM chat_messages WHERE session_id = ? ORDER BY seq ASC",
+    "SELECT role, content, tool_call_id, tool_name, tool_calls_json, timestamp FROM chat_messages WHERE session_id = ? ORDER BY seq ASC",
     [sessionId]
   );
   return rows.map((row: any) => {
@@ -72,7 +72,12 @@ export async function getSessionMessages(sessionId: string): Promise<ChatMessage
       msg.toolName = row[3];
       msg.name = row[3]; // LLM API 兼容
     }
-    if (row[4]) msg.timestamp = row[4];
+    if (row[4]) {
+      try {
+        msg.tool_calls = JSON.parse(row[4]);
+      } catch {}
+    }
+    if (row[5]) msg.timestamp = row[5];
     return msg;
   });
 }
@@ -121,15 +126,17 @@ export async function appendMessage(sessionId: string, message: ChatMessage): Pr
     [sessionId]
   );
   const nextSeq = (seqRows[0]?.[0] || 0) + 1;
+  const toolCallsJson = message.tool_calls ? JSON.stringify(message.tool_calls) : null;
   await query(
-    `INSERT INTO chat_messages (session_id, role, content, tool_call_id, tool_name, timestamp, seq)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO chat_messages (session_id, role, content, tool_call_id, tool_name, tool_calls_json, timestamp, seq)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       sessionId,
       message.role,
       message.content,
       message.toolCallId || message.tool_call_id || null,
       message.toolName || message.name || null,
+      toolCallsJson,
       message.timestamp || Date.now(),
       nextSeq,
     ]

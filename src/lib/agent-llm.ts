@@ -1,10 +1,19 @@
 import type { AgentConfig } from "./agent-config";
 
+/** OpenAI 兼容的 tool_calls 结构 */
+export interface ToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
 export interface ChatMessage {
   role: "user" | "assistant" | "system" | "tool";
   content: string;
   tool_call_id?: string;
   name?: string;
+  /** assistant 消息携带的 tool_calls（OpenAI 规范：tool 消息前必须有带 tool_calls 的 assistant） */
+  tool_calls?: ToolCall[];
 }
 
 export interface ToolDef {
