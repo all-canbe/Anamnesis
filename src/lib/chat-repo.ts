@@ -64,8 +64,14 @@ export async function getSessionMessages(sessionId: string): Promise<ChatMessage
   );
   return rows.map((row: any) => {
     const msg: ChatMessage = { role: row[0], content: row[1] };
-    if (row[2]) msg.toolCallId = row[2];
-    if (row[3]) msg.toolName = row[3];
+    if (row[2]) {
+      msg.toolCallId = row[2];
+      msg.tool_call_id = row[2]; // LLM API 兼容
+    }
+    if (row[3]) {
+      msg.toolName = row[3];
+      msg.name = row[3]; // LLM API 兼容
+    }
     if (row[4]) msg.timestamp = row[4];
     return msg;
   });
@@ -122,8 +128,8 @@ export async function appendMessage(sessionId: string, message: ChatMessage): Pr
       sessionId,
       message.role,
       message.content,
-      message.toolCallId || null,
-      message.toolName || null,
+      message.toolCallId || message.tool_call_id || null,
+      message.toolName || message.name || null,
       message.timestamp || Date.now(),
       nextSeq,
     ]

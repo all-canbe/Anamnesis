@@ -42,6 +42,10 @@ export interface ChatMessage {
   toolCallId?: string;
   toolName?: string;
   timestamp?: number;
+  /** LLM API 兼容：tool_call_id (snake_case 别名) */
+  tool_call_id?: string;
+  /** LLM API 兼容：name (snake_case 别名) */
+  name?: string;
 }
 
 export interface TokenEstimate {
