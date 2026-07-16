@@ -1983,6 +1983,38 @@ img {
   border: 1px solid var(--chat-border);
 }
 
+/* ─── Tool Message (persisted tool call record) ─── */
+.agent-msg-tool {
+  display: flex;
+  justify-content: center;
+  margin: 2px 14px;
+}
+
+.agent-msg-tool-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  background: var(--chat-bg-bubble-ai);
+  border-radius: 4px;
+  border: 1px solid var(--chat-border);
+}
+
+.agent-msg-tool-name {
+  font-family: var(--font-mono, monospace);
+  font-weight: 500;
+}
+
+.agent-msg-tool-status.is-ok {
+  color: var(--color-success, #16a34a);
+}
+
+.agent-msg-tool-status.is-error {
+  color: var(--color-danger, #dc2626);
+}
+
 /* ─── Thinking Animation ─── */
 .agent-thinking {
   display: flex;

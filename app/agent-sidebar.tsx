@@ -6,12 +6,17 @@ import { mdToHtml } from "@/lib/md-to-html";
 import {
   type ChatMessage,
   type ChatSession,
-  loadSessions,
-  saveSessions,
+  fetchSessions,
+  fetchMessages,
   createSession,
+  createSessionRemote,
+  renameSessionRemote,
   deleteSession,
+  deleteSessionRemote,
   addMessage,
-  getContextForLLM,
+  appendMessageRemote,
+  clearSessionMessagesRemote,
+  migrateLocalSessionsIfNeeded,
 } from "@/lib/chat-store";
 import {
   MenuIcon,
@@ -79,6 +84,7 @@ export function AgentSidebar({ open, onToggle, settingsConfig, isLoggedIn, onLog
   const [sending, setSending] = useState(false);
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const loadedSessionIds = useRef<Set<string>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -92,17 +98,71 @@ export function AgentSidebar({ open, onToggle, settingsConfig, isLoggedIn, onLog
   const activeSession = sessions.find((s) => s.id === activeId);
   const messages = activeSession?.messages || [];
 
+  // 加载会话历史：未登录时清空，登录时从服务端拉取（按 user_id 隔离）
   useEffect(() => {
-    const loaded = loadSessions();
-    if (loaded.length === 0) {
-      const fresh = createSession();
+    if (!isLoggedIn) {
+      setSessions([]);
+      loadedSessionIds.current.clear();
+      const fresh = createSession(); // 本地占位，不落库
       setSessions([fresh]);
       setActiveId(fresh.id);
-    } else {
-      setSessions(loaded);
-      setActiveId(loaded[0].id);
+      loadedSessionIds.current.add(fresh.id);
+      return;
     }
-  }, []);
+    let cancelled = false;
+    fetchSessions()
+      .then((remote) => {
+        if (cancelled) return;
+        if (remote.length === 0) {
+          // 尝试从旧版 localStorage 迁移会话到服务端
+          migrateLocalSessionsIfNeeded()
+            .then((migrated) => {
+              if (cancelled) return;
+              if (migrated && migrated.length > 0) {
+                setSessions(migrated);
+                setActiveId(migrated[0].id);
+                migrated.forEach((s) => loadedSessionIds.current.add(s.id));
+              } else {
+                const fresh = createSession();
+                setSessions([fresh]);
+                setActiveId(fresh.id);
+                loadedSessionIds.current.add(fresh.id);
+                createSessionRemote(fresh.id, fresh.title).catch(() => {});
+              }
+            })
+            .catch(() => {
+              if (cancelled) return;
+              const fresh = createSession();
+              setSessions([fresh]);
+              setActiveId(fresh.id);
+              loadedSessionIds.current.add(fresh.id);
+              createSessionRemote(fresh.id, fresh.title).catch(() => {});
+            });
+        } else {
+          setSessions(remote);
+          setActiveId(remote[0].id);
+          // 懒加载首个会话消息
+          fetchMessages(remote[0].id)
+            .then((msgs) => {
+              if (cancelled) return;
+              loadedSessionIds.current.add(remote[0].id);
+              setSessions((prev) =>
+                prev.map((s) => (s.id === remote[0].id ? { ...s, messages: msgs } : s))
+              );
+            })
+            .catch(() => {});
+        }
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        console.warn("加载会话列表失败:", e);
+        const fresh = createSession();
+        setSessions([fresh]);
+        setActiveId(fresh.id);
+        loadedSessionIds.current.add(fresh.id);
+      });
+    return () => { cancelled = true; };
+  }, [isLoggedIn]);
 
   useEffect(() => {
     fetch("/api/skills")
@@ -116,10 +176,6 @@ export function AgentSidebar({ open, onToggle, settingsConfig, isLoggedIn, onLog
         setSlashCommands([]);
       });
   }, []);
-
-  useEffect(() => {
-    if (sessions.length > 0) saveSessions(sessions);
-  }, [sessions]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -173,19 +229,54 @@ export function AgentSidebar({ open, onToggle, settingsConfig, isLoggedIn, onLog
     setActiveId(id);
     setShowSessionList(false);
     setShowClearConfirm(false);
+    // 懒加载该会话消息（仅服务端会话且未加载过时）
+    if (!isLoggedIn) return;
+    if (loadedSessionIds.current.has(id)) return;
+    if (!sessions.find((s) => s.id === id)) return;
+    loadedSessionIds.current.add(id); // 先标记，避免重复请求
+    fetchMessages(id)
+      .then((msgs) => {
+        setSessions((prev) =>
+          prev.map((s) => (s.id === id ? { ...s, messages: msgs } : s))
+        );
+      })
+      .catch((e) => {
+        loadedSessionIds.current.delete(id); // 失败则允许重试
+        console.warn("加载会话消息失败:", e);
+      });
   }
 
   function handleNewSession() {
     const fresh = createSession();
     setSessions((prev) => [fresh, ...prev]);
     setActiveId(fresh.id);
+    loadedSessionIds.current.add(fresh.id);
+    if (isLoggedIn) {
+      createSessionRemote(fresh.id, fresh.title).catch((e) => {
+        console.warn("服务端创建会话失败:", e);
+      });
+    }
   }
 
   function handleDeleteSession(id: string) {
     const updated = deleteSession(sessions, id);
     setSessions(updated);
+    loadedSessionIds.current.delete(id);
     if (activeId === id) {
-      setActiveId(updated[0]?.id || createSession().id);
+      if (updated.length > 0) {
+        setActiveId(updated[0].id);
+      } else {
+        const fresh = createSession();
+        setSessions([fresh]);
+        loadedSessionIds.current.add(fresh.id);
+        setActiveId(fresh.id);
+        if (isLoggedIn) createSessionRemote(fresh.id, fresh.title).catch(() => {});
+      }
+    }
+    if (isLoggedIn) {
+      deleteSessionRemote(id).catch((e) => {
+        console.warn("服务端删除会话失败:", e);
+      });
     }
   }
 
@@ -196,11 +287,18 @@ export function AgentSidebar({ open, onToggle, settingsConfig, isLoggedIn, onLog
 
   function confirmRename() {
     if (renamingId && renameValue.trim()) {
+      const newTitle = renameValue.trim();
+      const targetId = renamingId;
       setSessions((prev) =>
         prev.map((s) =>
-          s.id === renamingId ? { ...s, title: renameValue.trim() } : s
+          s.id === targetId ? { ...s, title: newTitle } : s
         )
       );
+      if (isLoggedIn) {
+        renameSessionRemote(targetId, newTitle).catch((e) => {
+          console.warn("服务端重命名失败:", e);
+        });
+      }
     }
     setRenamingId(null);
   }
@@ -216,6 +314,11 @@ export function AgentSidebar({ open, onToggle, settingsConfig, isLoggedIn, onLog
       )
     );
     setShowClearConfirm(false);
+    if (isLoggedIn && activeId) {
+      clearSessionMessagesRemote(activeId).catch((e) => {
+        console.warn("服务端清空会话失败:", e);
+      });
+    }
   }
 
   function handleCopyMessage(content: string) {
@@ -276,13 +379,11 @@ export function AgentSidebar({ open, onToggle, settingsConfig, isLoggedIn, onLog
     abortRef.current = abort;
 
     try {
-      // 使用当前 state 构建 history，避免 localStorage 竞态
-      const history = getContextForLLM(messages);
-
+      // 服务端从 DB 加载权威历史（按 sessionId），客户端不再传 history
       const res = await fetch("/api/agent/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history, skillId: activeSlash?.id ?? null }),
+        body: JSON.stringify({ message: text, sessionId: activeId, skillId: activeSlash?.id ?? null }),
         signal: abort.signal,
       });
 
@@ -361,7 +462,7 @@ export function AgentSidebar({ open, onToggle, settingsConfig, isLoggedIn, onLog
       setSending(false);
       abortRef.current = null;
     }
-  }, [input, streaming, activeId, activeSlash, sending, settingsConfig, t, messages, rollbackLastUserMsg]);
+  }, [input, streaming, activeId, activeSlash, sending, settingsConfig, t, isLoggedIn, onLoginPrompt, rollbackLastUserMsg]);
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (slashOpen) {
@@ -545,6 +646,22 @@ export function AgentSidebar({ open, onToggle, settingsConfig, isLoggedIn, onLog
             )}
 
             {messages.map((msg, i) => {
+              // 跳过 system 消息（ask_kb 注入的上下文，不展示给用户）
+              if (msg.role === "system") return null;
+              // tool 消息：精简展示工具调用记录
+              if (msg.role === "tool") {
+                const isError = msg.content.includes('"error"') || msg.content.includes("Unknown tool");
+                return (
+                  <div key={i} className="agent-msg agent-msg-tool">
+                    <div className="agent-msg-tool-info">
+                      <span className="agent-msg-tool-name">{msg.toolName || "tool"}</span>
+                      <span className={`agent-msg-tool-status ${isError ? "is-error" : "is-ok"}`}>
+                        {isError ? "失败" : "已调用"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              }
               const sources = msg.role === "assistant" ? extractSources(msg.content) : [];
               return (
               <div key={i} className={`agent-msg agent-msg-${msg.role}`}>

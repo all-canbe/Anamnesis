@@ -6,6 +6,8 @@ import type { ChatMessage } from "@/lib/agent-llm";
 import { verifyRequestAuth, unauthorizedResponse } from "@/lib/api-auth";
 import { runWithUserId } from "@/lib/request-context";
 import { loadSlashCommands, loadSkillResources, loadSkillCatalog } from "@/lib/skill-registry";
+import { getSessionMessages, appendMessage } from "@/lib/chat-repo";
+import { getContextForLLM } from "@/lib/chat-store";
 
 let agentInitialized = false;
 
@@ -137,9 +139,9 @@ export async function POST(request: NextRequest) {
 
           // 2. 解析请求体
           const body = await request.json();
-          const { message, history = [], skillId } = body as {
+          const { message, sessionId, skillId } = body as {
             message: string;
-            history: ChatMessage[];
+            sessionId?: string;
             skillId?: string | null;
           };
 
@@ -148,6 +150,23 @@ export async function POST(request: NextRequest) {
             safeClose();
             return;
           }
+
+          if (!sessionId || typeof sessionId !== "string") {
+            enqueue("error", { content: "缺少 sessionId，无法加载会话历史。" });
+            safeClose();
+            return;
+          }
+
+          // 3. 从 DB 加载该会话的权威历史（按 user_id 隔离，忽略客户端传入的 history）
+          let dbHistory: ChatMessage[] = [];
+          try {
+            dbHistory = await getSessionMessages(sessionId);
+          } catch (e: any) {
+            enqueue("error", { content: `加载会话历史失败：${e.message || "未知错误"}` });
+            safeClose();
+            return;
+          }
+          const compressedHistory = getContextForLLM(dbHistory);
 
           // 3. 读取配置
           const config = await getAgentConfig(username);
@@ -243,7 +262,7 @@ export async function POST(request: NextRequest) {
             // 将工具结果注入上下文，让 LLM 基于结果回答
             const messages: ChatMessage[] = [
               { role: "system", content: SYSTEM_PROMPT + catalogTable + skillInstructions },
-              ...history,
+              ...compressedHistory,
               { role: "user", content: message },
               {
                 role: "tool",
@@ -260,10 +279,47 @@ export async function POST(request: NextRequest) {
               round: 0,
             };
 
-            const result = await executeAgentLoop(ctx, enqueue);
+            let assistantFullContent = "";
+            const wrappedEnqueue = (type: string, payload: Record<string, any>) => {
+              if (type === "delta") assistantFullContent += payload.content || "";
+              enqueue(type, payload);
+            };
+
+            const initialLen = ctx.messages.length;
+            const result = await executeAgentLoop(ctx, wrappedEnqueue);
 
             if (result.type === "error") {
               enqueue("error", { content: result.message });
+            } else {
+              // 精简持久化：user → 中间消息（tool 等）→ 最终 assistant
+              const newMsgs = ctx.messages.slice(initialLen).filter(m =>
+                m.role !== "system" && !(m.role === "assistant" && !m.content)
+              );
+              if (newMsgs.length > 0 || assistantFullContent) {
+                try {
+                  await appendMessage(sessionId, { role: "user", content: message });
+                  for (const m of newMsgs) {
+                    if (m.role === "tool") {
+                      const trimmed = m.content.length > 800
+                        ? m.content.slice(0, 800) + "...[truncated]"
+                        : m.content;
+                      await appendMessage(sessionId, {
+                        role: "tool",
+                        content: trimmed,
+                        toolCallId: m.tool_call_id,
+                        toolName: m.name,
+                      });
+                    } else if (m.role === "assistant") {
+                      await appendMessage(sessionId, { role: "assistant", content: m.content });
+                    }
+                  }
+                  if (assistantFullContent) {
+                    await appendMessage(sessionId, { role: "assistant", content: assistantFullContent });
+                  }
+                } catch (e: any) {
+                  console.warn("持久化会话消息失败:", e);
+                }
+              }
             }
 
             enqueue("done", {});
@@ -272,7 +328,7 @@ export async function POST(request: NextRequest) {
             const ctx: LoopContext = {
               messages: [
                 { role: "system", content: SYSTEM_PROMPT + catalogTable + skillInstructions },
-                ...history,
+                ...compressedHistory,
                 { role: "user", content: message },
               ],
               config,
@@ -281,10 +337,47 @@ export async function POST(request: NextRequest) {
               round: 0,
             };
 
-            const result = await executeAgentLoop(ctx, enqueue);
+            let assistantFullContent = "";
+            const wrappedEnqueue = (type: string, payload: Record<string, any>) => {
+              if (type === "delta") assistantFullContent += payload.content || "";
+              enqueue(type, payload);
+            };
+
+            const initialLen = ctx.messages.length;
+            const result = await executeAgentLoop(ctx, wrappedEnqueue);
 
             if (result.type === "error") {
               enqueue("error", { content: result.message });
+            } else {
+              // 精简持久化：user → 中间消息（tool 等）→ 最终 assistant
+              const newMsgs = ctx.messages.slice(initialLen).filter(m =>
+                m.role !== "system" && !(m.role === "assistant" && !m.content)
+              );
+              if (newMsgs.length > 0 || assistantFullContent) {
+                try {
+                  await appendMessage(sessionId, { role: "user", content: message });
+                  for (const m of newMsgs) {
+                    if (m.role === "tool") {
+                      const trimmed = m.content.length > 800
+                        ? m.content.slice(0, 800) + "...[truncated]"
+                        : m.content;
+                      await appendMessage(sessionId, {
+                        role: "tool",
+                        content: trimmed,
+                        toolCallId: m.tool_call_id,
+                        toolName: m.name,
+                      });
+                    } else if (m.role === "assistant") {
+                      await appendMessage(sessionId, { role: "assistant", content: m.content });
+                    }
+                  }
+                  if (assistantFullContent) {
+                    await appendMessage(sessionId, { role: "assistant", content: assistantFullContent });
+                  }
+                } catch (e: any) {
+                  console.warn("持久化会话消息失败:", e);
+                }
+              }
             }
 
             enqueue("done", {});

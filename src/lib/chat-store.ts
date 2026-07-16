@@ -322,7 +322,7 @@ export class ContextManager {
   }
 }
 
-// ─── Session storage ───
+// ─── Session types & local state helpers ───
 
 export interface ChatSession {
   id: string;
@@ -332,55 +332,8 @@ export interface ChatSession {
   updatedAt: number;
 }
 
-const STORAGE_KEY = "zhiyi-chat-sessions";
-const MAX_SESSIONS = 20;
-
-// 单调递增版本号，防止多标签页间的 localStorage 旧数据覆盖新数据
-let _version = 0;
-
 function generateId(): string {
   return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-}
-
-export function loadSessions(): ChatSession[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      // 兼容旧格式：旧版是数组，新版是 { _version, sessions }
-      if (Array.isArray(parsed)) {
-        _version = 0;
-        return parsed;
-      }
-      _version = parsed._version || 0;
-      return parsed.sessions || [];
-    }
-  } catch {}
-  return [];
-}
-
-export function saveSessions(sessions: ChatSession[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    // 检查版本号：如果 localStorage 已有更新的数据，跳过本次写入
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed) && (parsed._version || 0) > _version) {
-        return; // 其他标签页已写入更新版本，放弃本次写入
-      }
-    }
-    _version++;
-    const data = { _version, sessions: sessions.slice(0, MAX_SESSIONS) };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch {
-    try {
-      const trimmed = sessions.slice(-5).map((s) => ({ ...s, messages: s.messages.slice(-4) }));
-      const data = { _version, sessions: trimmed };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch {}
-  }
 }
 
 export function createSession(title = "新对话"): ChatSession {
@@ -413,6 +366,83 @@ export function addMessage(sessions: ChatSession[], sessionId: string, message: 
   });
 }
 
+// ─── Server-backed session API client ───
+// 所有读写经鉴权 API，历史按 user_id 隔离在服务端
+
+async function jsonOrThrow(res: Response): Promise<any> {
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`请求失败 (${res.status}): ${txt || res.statusText}`);
+  }
+  return res.json();
+}
+
+/** 拉取当前用户会话列表（仅元数据，messages 为空，需懒加载） */
+export async function fetchSessions(): Promise<ChatSession[]> {
+  const res = await fetch("/api/agent/sessions", { credentials: "same-origin" });
+  const data = await jsonOrThrow(res);
+  return (data.sessions || []).map((s: any) => ({
+    id: s.id,
+    title: s.title || "新对话",
+    messages: [], // 懒加载
+    createdAt: s.createdAt || Date.now(),
+    updatedAt: s.updatedAt || Date.now(),
+  }));
+}
+
+/** 拉取指定会话的消息列表 */
+export async function fetchMessages(sessionId: string): Promise<ChatMessage[]> {
+  const res = await fetch(`/api/agent/sessions/${encodeURIComponent(sessionId)}`, { credentials: "same-origin" });
+  const data = await jsonOrThrow(res);
+  return (data.messages || []) as ChatMessage[];
+}
+
+/** 服务端创建会话 */
+export async function createSessionRemote(id: string, title = "新对话"): Promise<void> {
+  await fetch("/api/agent/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, title }),
+    credentials: "same-origin",
+  }).then(jsonOrThrow);
+}
+
+/** 服务端重命名会话 */
+export async function renameSessionRemote(id: string, title: string): Promise<void> {
+  await fetch(`/api/agent/sessions/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+    credentials: "same-origin",
+  }).then(jsonOrThrow);
+}
+
+/** 服务端删除会话 */
+export async function deleteSessionRemote(id: string): Promise<void> {
+  await fetch(`/api/agent/sessions/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  }).then(jsonOrThrow);
+}
+
+/** 服务端追加消息 */
+export async function appendMessageRemote(sessionId: string, message: ChatMessage): Promise<void> {
+  await fetch(`/api/agent/sessions/${encodeURIComponent(sessionId)}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+    credentials: "same-origin",
+  }).then(jsonOrThrow);
+}
+
+/** 服务端清空会话消息 */
+export async function clearSessionMessagesRemote(sessionId: string): Promise<void> {
+  await fetch(`/api/agent/sessions/${encodeURIComponent(sessionId)}/messages`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  }).then(jsonOrThrow);
+}
+
 // ─── Public compression API ───
 
 export function compressContext(messages: ChatMessage[]): ChatMessage[] {
@@ -434,4 +464,54 @@ export function getContextForLLM(messages: ChatMessage[]): ChatMessage[] {
   if (est.total < effectiveThreshold) return messages;
 
   return compressContext(messages);
+}
+
+// ─── Legacy localStorage migration ───
+// 一次性迁移：将旧版 localStorage 中的会话上传到服务端，成功后删除本地 key
+
+const LEGACY_STORAGE_KEY = "zhiyi-chat-sessions";
+
+/**
+ * 检测并迁移旧版 localStorage 会话到服务端。
+ * 仅在登录后、服务端会话列表为空时调用。
+ * 返回迁移成功的会话列表（含消息），若无旧数据返回 null。
+ */
+export async function migrateLocalSessionsIfNeeded(): Promise<ChatSession[] | null> {
+  if (typeof window === "undefined") return null;
+  let legacy: ChatSession[];
+  try {
+    const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    legacy = Array.isArray(parsed) ? parsed : (parsed.sessions || []);
+  } catch {
+    return null;
+  }
+  if (legacy.length === 0) {
+    try { localStorage.removeItem(LEGACY_STORAGE_KEY); } catch {}
+    return null;
+  }
+
+  const migrated: ChatSession[] = [];
+  for (const s of legacy.slice(0, 20)) {
+    try {
+      await createSessionRemote(s.id, s.title || "新对话");
+      for (const msg of (s.messages || [])) {
+        await appendMessageRemote(s.id, {
+          role: msg.role,
+          content: msg.content,
+          toolCallId: msg.toolCallId,
+          toolName: msg.toolName,
+          timestamp: msg.timestamp,
+        });
+      }
+      migrated.push(s);
+    } catch (e) {
+      console.warn(`迁移会话 ${s.id} 失败:`, e);
+    }
+  }
+
+  // 迁移成功后删除旧 key，防止重复迁移
+  try { localStorage.removeItem(LEGACY_STORAGE_KEY); } catch {}
+  return migrated;
 }

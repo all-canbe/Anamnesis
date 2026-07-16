@@ -106,6 +106,30 @@ export async function initTursoSchema(): Promise<void> {
   await query(createVerificationCodes);
   await query(createRateLimits);
 
+  // ─── Agent 会话历史表（按 user_id 严格隔离） ───
+  const createChatSessions = `CREATE TABLE IF NOT EXISTS chat_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '新对话',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`;
+  const createChatMessages = `CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    tool_call_id TEXT,
+    tool_name TEXT,
+    timestamp INTEGER NOT NULL,
+    seq INTEGER NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+  )`;
+  await query(createChatSessions);
+  await query(createChatMessages);
+  await query("CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id, updated_at DESC)");
+  await query("CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, seq)");
+
   // 迁移：为旧表添加可能缺失的列（CREATE TABLE IF NOT EXISTS 不会修改已存在的表）
   try { await query("ALTER TABLE records ADD COLUMN user_id TEXT NOT NULL DEFAULT ''"); } catch {}
   try { await query("ALTER TABLE records ADD COLUMN created_at TEXT NOT NULL DEFAULT (datetime('now'))"); } catch {}
